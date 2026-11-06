@@ -1,0 +1,26 @@
+/* Rapport — Nederlands, Belgische terminologie (brontaal van de rapportteksten) */
+I18N.add({
+  domain: 'rep', code: 'nl', name: 'Nederlands (BE)', locale: 'nl-BE', num: { group: '.', dec: ',' },
+  labels: {
+    dir: { T: 'Toevoer', A: 'Afvoer' },
+    pe: { T: 'PU', A: 'EX' },
+    peLong: { T: 'PULSIE (PU)', A: 'EXTRACTIE (EX)' },
+    ttype: { plafonddiffusor: 'Plafonddiffusor', rooster: 'Rooster', ventiel: 'Ventiel', sleuf: 'Sleufdiffusor', wervel: 'Wervelrooster', overig: 'Overig' },
+    method: { hood: 'Debietkap', anemo: 'Anemometer (Ak)', kfactor: 'k-factor (dp)', pitot: 'Pitotbuis traverse', traverse: 'Snelheidstraverse', readout: 'Uitlezing regelaar' },
+    mshort: { hood: 'Kap', anemo: 'Anemometer', kfactor: 'k-factor', pitot: 'Pitot', traverse: 'Snelheid', readout: 'Regelaar' },
+    reg: { none: '-', iris: 'Irisklep', regelklep: 'Regelklep', cav: 'CAV-regelaar', vav: 'VAV-regelaar', plenum: 'Plenumregelklep', afsluit: 'Afsluitklep', brand: 'Brandklep', terugslag: 'Terugslagklep' },
+    state: { '': '', open: 'Open', dicht: 'Dicht', ok: 'In orde', defect: 'Defect' },
+    cond: { '': '', ok: 'In orde', defect: 'Defect' },
+    pass: { '': '', wand: 'wand', vloer: 'vloer', schacht: 'schachtwand' },
+    act: { '': '', smelt: 'Smeltzekering 72 °C', m24: 'Motor 24 V', m230: 'Motor 230 V', other: 'Andere' },
+    chk: { '': '', ok: 'OK', nok: 'NIET OK', nvt: 'n.v.t.' },
+    shape: { round: 'Rond', rect: 'Rechthoekig' },
+    stat: { ok: 'OK', nok: 'AFREGELEN', low: 'TE LAAG' },
+    status: { '': '', noaccess: 'Geen toegang', missing: 'Ontbreekt', mismatch: 'Wijkt af van de gegevens' },
+    phase: { eerste: 'Eerste meting', controle: 'Controlemeting' },
+    inskind: { hood: 'Debietkap', funnel: 'Trechter + schoepenrad', vane: 'Schoepenradanemometer', hotwire: 'Hittedraadanemometer', dp: 'Drukverschilmeter', clamp: 'Stroomtang', tacho: 'Toerentalmeter', other: 'Ander toestel' },
+    page: { project: 'Algemeen en installatie', points: 'Meetpunten en kanaalnet', eerste: 'Eerste meting (vóór inregeling)', devices: 'Inregeling regelorganen', controle: 'Controlemeting (na inregeling)', report: 'Oplevering', team: 'Ploegen en pakketten' },
+    yes: { 1: 'ja', 0: 'nee' },
+  },
+  strings: {},
+});
