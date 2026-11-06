@@ -1,6 +1,6 @@
 {
- "name": "Ventilation Setup Tool · Demo",
- "short_name": "VST Demo",
+ "name": "Ventilation Setup Tool",
+ "short_name": "Vent Setup",
  "description": "Ventilation commissioning: measurements, balancing, inregelrapport",
  "start_url": "./",
  "scope": "./",

@@ -40,12 +40,32 @@ const Updater = {
     let j = null;
     // 0.9.21: signed in → the server (app-update: only with a valid plan, link signed for 30 minutes); else the public test address
     if (typeof Auth !== 'undefined' && Auth.user()) { try { j = await Auth.call('/functions/v1/app-update', { body: {} }); } catch (e) { if (e.status === 403) { this.at = Date.now(); this.info = null; return null; } } }
-    if (!j) { const r = await fetch(this.base() + 'latest.json?t=' + Date.now(), { cache: 'no-store' }); if (!r.ok) throw new Error('update ' + r.status); j = await r.json(); }
+    if (!j) { this.at = Date.now(); this.info = null; return null; } // 0.9.23: updates only for signed-in users (the old public address is closed)
     this.at = Date.now();
     this.info = j && Number(j.code) > me.code && j.apk ? j : null; return this.info;
   },
-  /** the system browser downloads the APK (Capacitor opens a link of another site outside the app); then the Android installer */
-  open() { if (!this.info) return; const a = document.createElement('a'); a.href = this.info.url || new URL(this.info.apk, this.base()).href; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); },
+  /** 0.9.23: the app downloads the APK itself (plugin ApkInstaller: SHA-256 checked) and opens the Android installer — one tap «Install».
+   *  Without the plugin (an APK before 0.9.23): the system browser downloads it */
+  busy: false,
+  async open() {
+    if (!this.info || this.busy) return;
+    const url = this.info.url || new URL(this.info.apk, this.base()).href, P = Platform.plugin('ApkInstaller');
+    if (!P) { const a = document.createElement('a'); a.href = url; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); toast(__('Downloading the update — open the file when it is ready')); return; }
+    try {
+      const c = await P.canInstall();
+      if (!c.ok) { toast(__('Allow this app to install updates, then tap «Update» again')); await P.openSettings(); return; }
+      await this.check(true); if (!this.info || !this.info.url) { toast(__('The update could not be downloaded: try again')); return; } // a fresh signed link (valid 30 minutes)
+      const u = this.info.url;
+      this.busy = true; toast(__('Downloading the update…'));
+      const h = await P.addListener('progress', (e) => { if (this.busy && e.total > 0) toast(__('Downloading the update… {p} %', { p: Math.round(e.loaded / e.total * 100) })); });
+      try { await P.install({ url: u, sha256: this.info.sha256 || '', name: this.info.apk }); }
+      finally { this.busy = false; try { h.remove(); } catch (e) { } }
+      toast(__('Tap «Install» to finish the update'));
+    } catch (e) {
+      this.busy = false; this.at = 0;
+      toast(String(e && e.message).includes('checksum') ? __('The download was damaged: try again') : __('The update could not be downloaded: try again'));
+    }
+  },
   notes() { const n = this.info && this.info.notes; if (!n) return ''; return typeof n === 'string' ? n : n[I18N.cur.ui] || n.en || ''; },
 };
 const Platform = {

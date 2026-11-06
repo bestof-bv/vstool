@@ -147,7 +147,7 @@ function renderHome() {
   <main class="wrap stack">
     ${updateBannerHTML()}
     ${DEMO_ED ? `<div class="banner demo-banner"><span>${__x('<b>Demo</b>: {p} project and up to {n} points, reports are marked DEMO. Your data stays in this browser.', { p: DEMO_LIMITS.projects, n: DEMO_LIMITS.points })}${/Android/i.test(navigator.userAgent) ? ' ' + __h('The Android app comes with the full version.') : ''}</span>
-      <span class="row" style="gap:8px"><button class="btn sm primary" data-act="fullSignIn">${__h('Sign in / register')}</button><a class="btn sm ghost" href="https://hvac-service.be/" target="_blank" rel="noopener">${__h('Full version')}</a></span></div>`
+      <span class="row" style="gap:8px"><button class="btn sm primary" data-act="fullSignIn">${__h('Sign in / register')}</button></span></div>`
     : Demo.on() ? `<div class="banner demo-banner"><span>${__x('<b>Demo</b>: {p} project and up to {n} points, reports are marked DEMO. Your data stays in this browser.', { p: DEMO_LIMITS.projects, n: DEMO_LIMITS.points })}</span>
       <span class="row" style="gap:8px"><button class="btn sm primary" data-act="demoOut" data-v="signup">${__h('Create an account')}</button><button class="btn sm ghost" data-act="demoOut" data-v="signin">${__h('Leave the demo')}</button></span></div>` : ''}
     <section class="hero">
@@ -1750,7 +1750,7 @@ document.addEventListener('click', async (e) => {
     case 'repLangDef': Settings.v.repLang = t.dataset.v; Settings.save(); if (!p) I18N.set('rep', t.dataset.v); renderSheet(); break;
     case 'hints': Settings.v.hints = t.dataset.v; Settings.save(); render(); break;
     case 'theme': Theme.set(t.dataset.v); renderSheet(); break;
-    case 'appUpdate': Updater.open(); toast(__('Downloading the update — open the file when it is ready')); break;
+    case 'appUpdate': Updater.open(); break;
     case 'appCheck': { toast(__('Checking…')); try { const i = await Updater.check(true); toast(i ? __('Version {v} is available', { v: i.version }) : __('This is the newest version')); } catch (e) { toast(__('Could not check for updates — no connection?')); } if (S.dlg) renderSheet(); else render(); break; }
     case 'langTpl': { try { const d = t.dataset.d; const b = await LANGX.template(d); await offerFile(`Inregelaar_${d === 'ui' ? 'interface' : 'report'}_language_template.xlsx`, b); } catch (err) { console.error(err); toast(__('Could not create the file')); } break; }
     case 'langDel': I18N.removeCustom(t.dataset.d, t.dataset.code); if (t.dataset.d === 'ui') { Settings.v.uiLang = I18N.cur.ui; Settings.save(); } render(); break;
