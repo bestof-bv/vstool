@@ -148,7 +148,7 @@ function renderHome() {
     ${updateBannerHTML()}
     ${DEMO_ED ? `<div class="banner demo-banner"><span>${__x('<b>Demo</b>: {p} project and up to {n} points, reports are marked DEMO. Your data stays in this browser.', { p: DEMO_LIMITS.projects, n: DEMO_LIMITS.points })}${/Android/i.test(navigator.userAgent) ? ' ' + __h('The Android app comes with the full version.') : ''}</span>
       <span class="row" style="gap:8px"><button class="btn sm primary" data-act="fullSignIn">${__h('Sign in / register')}</button><a class="btn sm ghost" href="https://hvac-service.be/" target="_blank" rel="noopener">${__h('Full version')}</a></span></div>`
-    : Demo.on() ? `<div class="banner demo-banner"><span>${__x('<b>Demo</b> — to get to know the app. The demo projects stay apart from the projects of your account; reports are marked DEMO.')}</span>
+    : Demo.on() ? `<div class="banner demo-banner"><span>${__x('<b>Demo</b>: {p} project and up to {n} points, reports are marked DEMO. Your data stays in this browser.', { p: DEMO_LIMITS.projects, n: DEMO_LIMITS.points })}</span>
       <span class="row" style="gap:8px"><button class="btn sm primary" data-act="demoOut" data-v="signup">${__h('Create an account')}</button><button class="btn sm ghost" data-act="demoOut" data-v="signin">${__h('Leave the demo')}</button></span></div>` : ''}
     <section class="hero">
       <h1>${__h('Air flow balancing, step by step')}</h1>
@@ -1648,7 +1648,7 @@ document.addEventListener('click', async (e) => {
   const t = e.target.closest('[data-act]'); if (!t) return;
   const act = t.dataset.act; const p = cur();
   if (!Access.allow(act)) return;
-  if (DEMO_ED) { // demo edition (0.9.21): 1 own project, 20 points a project
+  if (demoLimited()) { // demo (0.9.21) and the demo account of the full version (0.9.22): 1 own project, 20 points a project
     if (act === 'newProject' && !Access.demoRoom('project')) return;
     if (['addPt', 'addDevice', 'addChild', 'dupPt'].includes(act) && !Access.demoRoom('point', p)) return;
     if (act === 'bulkCreate' && p && S.dlg && p.points.length + bulkCodes(S.dlg.v).length > DEMO_LIMITS.points) { Access.demoRoom('point', { points: { length: DEMO_LIMITS.points } }); return; }

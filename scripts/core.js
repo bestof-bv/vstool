@@ -1,5 +1,5 @@
 /** version of the app and date of the build (filled in by build.py from mobile/package.json) */
-const APP_VERSION = '0.9.21', APP_BUILD = '2026-11-06';
+const APP_VERSION = '0.9.22', APP_BUILD = '2026-11-06';
 /* ---------- labels: L (interface) and RL (reports) are filled from the language packs, see i18n.js ---------- */
 const MEASURE_STEPS = { 2: 'eerste', 4: 'controle' };
 const stepNames = () => [__('Project'), __('Points'), __('Measure 1'), __('Balancing'), __('Measure 2'), __('Report'), __('Handover')]; // step 4 «Balancing» (was «Dampers», 0.9.17)

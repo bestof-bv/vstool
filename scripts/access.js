@@ -5,6 +5,8 @@
 /** edition of this build (0.9.21): 'demo' on the public demo site (scripts/edition.js), else 'full' */
 const EDITION = (typeof VST_EDITION === 'string' && VST_EDITION === 'demo') ? 'demo' : 'full';
 const DEMO_ED = EDITION === 'demo';
+/** limits of the demo: the demo site, and (0.9.22) the demo account of the full version too */
+const demoLimited = () => DEMO_ED || Demo.on();
 /** the demo edition: 1 own project (+ the example), 20 points a project; no crews, Excel import, backups, own catalogue entries, own style */
 const DEMO_LIMITS = { projects: 1, points: 20 };
 const DEMO_OFF = new Set(['import.excel', 'package.manage', 'project.backup', 'catalog.edit', 'org.profile', 'org.texts', 'org.languages', 'org.users', 'org.billing']);
@@ -117,7 +119,7 @@ const Access = {
     const roles = PERMS[perm]; if (!roles) return { ok: true };
     const pl = this.planOf(o);
     if (!roles.includes(o.role)) return { ok: false, kind: 'role' };
-    if (DEMO_ED && DEMO_OFF.has(perm)) return { ok: false, kind: 'demo' };
+    if (demoLimited() && DEMO_OFF.has(perm)) return { ok: false, kind: 'demo' };
     if (pl.readOnly && !READONLY_OK.includes(perm)) return { ok: false, kind: 'readonly', state: o.state };
     const f = NEEDS[perm]; if (f && !pl.features.includes(f)) return { ok: false, kind: 'plan', need: PLAN_ORDER.find(k => PLANS[k].features.includes(f)) || 'business' };
     return { ok: true };
@@ -182,7 +184,7 @@ const Access = {
   allow(act) { const perm = ACT_PERM[act]; if (!perm || this.can(perm)) return true; toast(this.why(perm)); return false; },
   /** demo edition: room for one more project / point? (explains when not) */
   demoRoom(kind, p) {
-    if (!DEMO_ED) return true;
+    if (!demoLimited()) return true;
     if (kind === 'project') { const own = Object.values(Store.projects || {}).filter(x => x && !x.example).length; if (own < DEMO_LIMITS.projects) return true; toast(__('Demo: {n} project. Register for the full version.', { n: DEMO_LIMITS.projects })); return false; }
     if (kind === 'point') { if (!p || (p.points || []).length < DEMO_LIMITS.points) return true; toast(__('Demo: up to {n} points a project. Register for the full version.', { n: DEMO_LIMITS.points })); return false; }
     return true;
