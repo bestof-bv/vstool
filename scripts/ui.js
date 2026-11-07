@@ -964,6 +964,7 @@ function renderSheet() {
   Access.decorate(sheetEl);
   const nb = document.getElementById('shBody'); if (nb && keep) nb.scrollTop = keep;
   hydratePhotos(sheetEl); hydratePlans(sheetEl);
+  { const ab = sheetEl.querySelector('[data-autobk]'); if (ab) AutoBackup.list().then((l) => { ab.innerHTML = l.length ? l.map((b) => `<div class="row" style="justify-content:space-between;gap:8px;padding:4px 0;border-top:1px solid var(--line)"><span>${esc(fmtDate(b.at))} · ${esc(b.version || '')} · ${esc(b.reason === 'update' ? __('after an update') : b.reason === 'manual' ? __('by hand') : __('daily'))} · ${esc(__('{n} projects', { n: b.n }))}</span><button class="btn sm" data-act="abkRestore" data-k="${esc(b.key)}">${__h('Put back')}</button></div>`).join('') : esc(__('No copy yet: the first one is made shortly after the start.')); }).catch(() => { }); }
   { const si = sheetEl.querySelector('[data-storeinfo]'); if (si && navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(e => { const n = Object.values(Store.projects).reduce((k, x) => k + (x.docs || []).length, 0); si.textContent = __('Used on this device: {u} of {q} · plans in the projects: {n}', { u: MB(e.usage || 0), q: MB(e.quota || 0), n }); }).catch(() => { }); }
   applyDock(); if (S.ed && key !== renderSheet.last) syncSel(true); renderSheet.last = key;
   updateLive();
@@ -1154,7 +1155,7 @@ function setupFields(p, pt) {
         ${DEVICE_ONLY.includes(r.type) ? sel({ pt: pt.id, f: 'reg.state' }, r.state || '', posLabels(), { label: __('Position'), nl: 'Stand' }) : ''}
       </div>
       ${r.type !== 'none' && !DEVICE_ONLY.includes(r.type) ? chk({ pt: pt.id, f: 'reg.locked' }, r.locked, __('Locked after adjusting')) : ''}
-      ${r.type === 'cav' || r.type === 'vav' ? `<details class="more"${ctlOn(r.ctl) ? ' open' : ''}><summary>${__h('Actuator · control and communication')}</summary><div class="inner">${ctlHTML(p, { pt: pt.id }, 'reg.ctl', r.ctl, {})}</div></details>` : ''}
+      ${r.type !== 'none' && !DEVICE_ONLY.includes(r.type) ? `<details class="more"${ctlOn(r.ctl) || String(r.act || '').trim() ? ' open' : ''}><summary>${__h('Actuator · control and communication')}</summary><div class="inner">${inp({ pt: pt.id, f: 'reg.act' }, r.act || '', { label: __('Motor / actuator type'), nl: 'Motor', ph: 'Belimo LMV-D3-MOD' })}${ctlHTML(p, { pt: pt.id }, 'reg.ctl', r.ctl, {})}${r.type === 'vav' ? '' : `<span class="small muted">${__h('With a motor or a control filled in, this damper is listed in «Regelorganen» of the report.')}</span>`}</div></details>` : ''}
       ${pt.kind === 'terminal' ? `<span class="small muted">${__h('Plenum damper: in the plenum box of the grille (swirl or slot diffuser). Iris or control damper: in the connection of this grille only.')}</span>` : pt.kind === 'duct' ? `<span class="small muted">${__h('Node: register, iris, CAV or VAV controls a branch. Plenum dampers belong to the grilles.')}</span>` : ''}
     </div>`}`;
 }
@@ -1434,6 +1435,9 @@ function dialogHTML(p, d) {
       ${catCardHTML()}
       <section class="card"><div class="hd"><h3>${__h('About the app')}</h3></div>
         <div class="kv"><div><span class="label">${__h('Version')}</span><span class="mono">${esc(APP_VERSION)}</span></div><div><span class="label">${__h('Build')}</span><span class="mono">${esc(fmtDate(APP_BUILD, false))}</span></div></div></section>
+      <section class="card"><div class="hd"><h3>${__h('Automatic backups')}</h3><button class="btn sm" data-act="abkNow">${__h('Make a copy now')}</button></div>
+        <p class="small muted" style="margin:0 0 6px">${__h('A copy of all projects on this device is made at the first start after every update and once a day; the last 10 are kept. «Put back» restores the projects of that copy that are no longer here — existing projects are never replaced.')}</p>
+        <div data-autobk class="small muted">…</div></section>
       <section class="card"><h3>${__h('Data storage')}</h3><p class="small" style="margin:0" data-storeinfo></p><p class="small muted" style="margin:0">${STANDALONE
         ? __('Projects, photos and plans are stored on this device. Make a backup (.zip) in the «Report» step — it includes the photos and plans and opens on another device via «Import».')
         : Store.mode === 'cloud' ? __('Projects are saved in your Claude cloud storage with a copy on the device. Photos go to the file storage of this page. Only you can see them.') : __('Cloud storage is not available in this window — projects and photos are saved on the device.')}</p></section>`,
@@ -1807,6 +1811,10 @@ document.addEventListener('click', async (e) => {
     case 'askDelPt': S.confirm = 'delPt'; renderSheet(); break;
     case 'delPt': { const gone = p.points.find(x => x.id === S.ed.id); if (!gone || !canDelete(p, gone)) break; for (const c of rawChildren(p, gone.id)) c.parentId = gone.parentId || ''; p.points = p.points.filter(x => x !== gone); touch(p); closeSheet(); for (const ph of gone?.photos || []) Photos.remove(ph); break; }
     case 'cancelConfirm': S.confirm = null; render(); break;
+    case 'abkNow': { const r = await AutoBackup.take('manual'); toast(r ? __('Copy made: {n} projects', { n: r.n }) : __('There is no project to copy')); renderSheet(); break; }
+    case 'abkRestore': { const r = await AutoBackup.restore(t.dataset.k); if (!r) { toast(__('The copy could not be read')); break; }
+      Store.projects = Store.spaces[lsKey(LS_KEY)] || Store.projects;
+      toast(r.added ? __('{n} projects put back', { n: r.added }) : __('All projects of this copy are already here')); render(); renderSheet(); break; }
     case 'closeSheet': closeSheet(); break;
     case 'setKind': case 'setDir': case 'setShape': {
       const pt = p.points.find(x => x.id === S.ed.id); const v = t.dataset.v;

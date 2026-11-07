@@ -1,5 +1,5 @@
 /** version of the app and date of the build (filled in by build.py from mobile/package.json) */
-const APP_VERSION = '0.9.24', APP_BUILD = '2026-11-06';
+const APP_VERSION = '0.9.25', APP_BUILD = '2026-11-07';
 /* ---------- labels: L (interface) and RL (reports) are filled from the language packs, see i18n.js ---------- */
 const MEASURE_STEPS = { 2: 'eerste', 4: 'controle' };
 const stepNames = () => [__('Project'), __('Points'), __('Measure 1'), __('Balancing'), __('Measure 2'), __('Report'), __('Handover')]; // step 4 «Balancing» (was «Dampers», 0.9.17)
@@ -399,6 +399,55 @@ const PDB = {
       for (const id of del) st.delete(space + '|' + id);
       tx.oncomplete = () => res(true); tx.onerror = () => res(false); tx.onabort = () => res(false);
     });
+  },
+};
+/* 0.9.25: automatic backups on this device — a copy of the projects of both spaces at the first start of every new version and once a day
+   (the photo and plan files stay in their own stores and are not copied again). The last 10 copies are kept; Settings can put back
+   the projects that are no longer there. A copy never replaces a project that exists. */
+const AutoBackup = {
+  KEEP: 10, LS: 'vst.backup.v1', _p: null,
+  open() {
+    if (!this._p) this._p = new Promise((res) => {
+      if (!('indexedDB' in window)) return res(null);
+      let r; try { r = indexedDB.open('inregelaar-backup', 1); } catch (e) { return res(null); }
+      r.onupgradeneeded = () => r.result.createObjectStore('b');
+      r.onsuccess = () => res(r.result); r.onerror = () => res(null); r.onblocked = () => res(null);
+    });
+    return this._p;
+  },
+  req(mode, fn) { return this.open().then((db) => db ? new Promise((res) => { const tx = db.transaction('b', mode); const q = fn(tx.objectStore('b')); tx.oncomplete = () => res(q && q.result); tx.onerror = tx.onabort = () => res(null); }) : null); },
+  state() { try { return JSON.parse(localStorage.getItem(this.LS) || '{}') || {}; } catch (e) { return {}; } },
+  /** the copies, newest first: {key, at, version, reason, n} */
+  async list() {
+    const all = await this.req('readonly', (st) => st.getAll()); if (!all) return [];
+    return all.map((b) => ({ key: 'b' + b.at, at: b.at, version: b.version, reason: b.reason, n: Object.values(b.spaces || {}).reduce((k, o) => k + Object.values(o).filter((x) => x && !x.example).length, 0) })).sort((a, b) => b.at - a.at);
+  },
+  /** a copy of every project now on the device; nothing when there is no own project */
+  async take(reason) {
+    if (!Store.device) return null;
+    const spaces = {}; let n = 0;
+    for (const k of SPACES) { const o = Store.spaces[k] || (await PDB.all(k)) || {}; const own = Object.fromEntries(Object.entries(o).filter(([, x]) => x && !x.example)); spaces[k] = own; n += Object.keys(own).length; }
+    if (!n) return null;
+    const at = Date.now(); const ok = await this.req('readwrite', (st) => { st.put(JSON.parse(JSON.stringify({ at, version: APP_VERSION, reason, spaces })), 'b' + at); });
+    if (ok === null) return null;
+    const keys = (await this.req('readonly', (st) => st.getAllKeys())) || [];
+    const old = keys.sort().slice(0, Math.max(0, keys.length - this.KEEP)); if (old.length) await this.req('readwrite', (st) => { old.forEach((k) => st.delete(k)); });
+    try { localStorage.setItem(this.LS, JSON.stringify({ at, version: APP_VERSION })); } catch (e) { }
+    return { at, n };
+  },
+  /** at the start: after an update, or a day after the last copy */
+  auto() { const s = this.state(); if (s.version !== APP_VERSION) return this.take('update'); if (!s.at || Date.now() - s.at > 864e5) return this.take('daily'); return Promise.resolve(null); },
+  /** put back the projects of a copy that are no longer on this device: {added, kept} */
+  async restore(key) {
+    const b = await this.req('readonly', (st) => st.get(key)); if (!b || !b.spaces) return null;
+    let added = 0, kept = 0;
+    for (const k of SPACES) {
+      const rows = b.spaces[k] || {}; const obj = Store.spaces[k] || (Store.spaces[k] = (await PDB.all(k)) || {}); const put = {};
+      for (const id of Object.keys(rows)) { if (obj[id]) { kept++; continue; } obj[id] = migrate(rows[id]); put[id] = obj[id]; added++; }
+      if (Object.keys(put).length) await PDB.write(k, put, []);
+    }
+    this.restored = true;
+    return { added, kept };
   },
 };
 const Store = {

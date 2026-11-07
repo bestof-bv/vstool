@@ -402,6 +402,13 @@ function sysBalRowsR(p, e) {
 }
 /** control of a VAV / CAV in one line: mode at commissioning, supply, address */
 function regCtlR(pt) { const r = pt.reg || {}; const R = RLab(); return [R.opmode[r.opmode] || '', R.pwr[(r.ctl || {}).pwr] || '', ctlAddr(r.ctl, true)].filter(Boolean).join(' · '); }
+/** 0.9.25: a motorised damper (the «Regelorganen» table of the report): a VAV (always with an actuator), or a damper — CAV included — with a motor or a
+ *  control filled in. A mechanical CAV without a drive is not one: its setting is in the balancing report. */
+function motorised(pt) { const r = pt.reg; return !!(r && hasReg(pt) && !isDev(pt) && !DEVICE_ONLY.includes(r.type) && (r.type === 'vav' || String(r.act || '').trim() || ctlOn(r.ctl))); }
+/** supply, control and address of a damper's motor in one line (without the mode: its own column) */
+function regCtlLineR(pt) { const c = (pt.reg || {}).ctl || {}; return [RLab().pwr[c.pwr] || '', ctlAddr(c, true)].filter(Boolean).join(' · '); }
+/** 0.9.25: a duct traverse that was measured (pitot / velocity traverse with a result) — the «Kanaalmetingen» table */
+function ductMeasured(p, pt) { return pt.kind === 'duct' && ['pitot', 'traverse'].includes(pt.method) && (isNum(calcQ(pt, 'eerste', p).q) || isNum(calcQ(pt, 'controle', p).q)); }
 /** what a controlled device is, in the report language */
 function ctlKindR(p, e) {
   if (e.kind === 'unit') return [_r('regelaar luchtgroep'), e.s.unit].filter(Boolean).join(' · ');

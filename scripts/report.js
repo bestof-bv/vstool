@@ -469,25 +469,25 @@ async function buildXlsx(p) {
     K.addCF(`N${KF}:N${r}`, 'equal', q2(ST.ok), okDxf); K.addCF(`N${KF}:N${r}`, 'equal', q2(ST.low), badDxf);
   }
 
-  /* ---- 3. Regelorganen (regulating: iris, register, CAV/VAV, plenum) ---- */
-  const regs = reportGroups(p, p.points.filter(x => hasReg(x) && !isDev(x) && !DEVICE_ONLY.includes(x.reg.type))).flatMap(g => g.pts);
+  /* ---- 3. Regelorganen: 0.9.25 only motorised dampers (CAV / VAV, dampers with a motor) with settings, motor, control and address ---- */
+  const regs = reportGroups(p, p.points.filter(x => motorised(x))).flatMap(g => g.pts);
   if (regs.length) {
-    const R5 = wb.sheet(_r('Regelorganen'));
-    const H5 = [[_r('Luchtgroep'), 10], ['PU/ EX', 6], [_r('Code'), 10], [_r('Ruimte / zone'), 26], [_r('Type'), 18], [_r('Model / DN'), 16], ['Vmin m³/h', 9], ['Vmax m³/h', 9], [_r('Stand vóór'), 11], [_r('Stand na'), 11], [_r('Vergrendeld'), 10], [_r('Opmerking'), 44], ['Vnom m³/h', 9], [_r('Sturing / adres'), 34], [_r('Naam GBS'), 16]];
+    const R5 = wb.sheet(_r('Regelorganen')); const dupR = ctlDupes(p);
+    const H5 = [[_r('Luchtgroep'), 10], ['PU/ EX', 6], [_r('Code'), 10], [_r('Ruimte / zone'), 26], [_r('Type'), 18], [_r('Model / DN'), 16], [_r('Motor'), 20], ['Vmin m³/h', 9], ['Vnom m³/h', 9], ['Vmax m³/h', 9], ['Δp min Pa', 9], [_r('Modus'), 9], [_r('Sturing / adres'), 34], [_r('Naam GBS'), 16], [_r('Opmerking'), 44]];
     H5.forEach(([, w], i) => R5.width(i + 1, w));
     title(R5, _r('REGELORGANEN'), sub2, H5.length, false);
     r = 5; H5.forEach(([h], i) => R5.set(r, i + 1, h, S.th)); R5.height(r, 26); R5.freeze = { r: 6, c: 1 }; r++;
     for (const pt of regs) {
-      [sysOf(p, pt.systemId)?.code || '', RL.pe[pt.dir], pt.code, pt.room, RL.reg[pt.reg.type], pt.reg.model].forEach((v, i) => R5.set(r, i + 1, v || '', i === 3 || i === 4 || i === 5 ? S.td : S.tdC));
-      R5.set(r, 7, isNum(pt.reg.vmin) ? pt.reg.vmin : null, num(S.tdC, N0)); R5.set(r, 8, isNum(pt.reg.vmax) ? pt.reg.vmax : null, num(S.tdC, N0));
-      R5.set(r, 9, pt.reg.posBefore || '', S.inpC); R5.set(r, 10, pt.reg.posAfter || '', S.inpC); R5.set(r, 11, pt.reg.locked ? RL.yes[1] : RL.yes[0], S.tdC);
-      R5.set(r, 12, [pt.note, blockedNote(p, pt)].filter(Boolean).join(' · '), S.note);
-      R5.set(r, 13, isNum(pt.reg.vnom) ? pt.reg.vnom : null, num(S.tdC, N0)); R5.set(r, 14, regCtlR(pt), S.td); R5.set(r, 15, (pt.reg.ctl || {}).bms || '', S.td); r++;
+      const c = pt.reg.ctl || {}; const isDup = dupR.some(d => d.items.some(x => x.ctl === c));
+      [sysOf(p, pt.systemId)?.code || '', RL.pe[pt.dir], pt.code, pt.room, RL.reg[pt.reg.type], pt.reg.model, pt.reg.act].forEach((v, i) => R5.set(r, i + 1, v || '', i >= 3 ? S.td : S.tdC));
+      [pt.reg.vmin, pt.reg.vnom, pt.reg.vmax, pt.reg.dpmin].forEach((v, i) => R5.set(r, 8 + i, isNum(v) ? v : null, num(S.tdC, N0)));
+      R5.set(r, 12, RLab().opmode[pt.reg.opmode] || '', S.tdC); R5.set(r, 13, regCtlLineR(pt), S.td); R5.set(r, 14, c.bms || '', S.td);
+      R5.set(r, 15, [isDup ? _r('DUBBEL ADRES') : '', pt.note, c.note, blockedNote(p, pt)].filter(Boolean).join(' · '), isDup ? { ...S.note, font: f(9, true, HS.badT) } : S.note); r++;
     }
   }
 
   /* ---- 3c. Adressering: every controlled device with its supply, control and address (for the BMS integrator) ---- */
-  const ctlE = ctlEntries(p);
+  const ctlE = ctlEntries(p).filter(e => e.kind !== 'reg' || !regs.includes(e.pt)); // 0.9.25: VAV / CAV are in «Regelorganen»
   if (ctlE.length) {
     const AD = wb.sheet(_r('Adressering')); const dup = ctlDupes(p);
     const HA = [[_r('Systeem'), 14], [_r('Luchtgroep'), 10], [_r('Toestel'), 14], [_r('Type'), 30], [_r('Voeding'), 12], [_r('Sturing'), 14], [_r('Adres'), 8], ['MAC', 7], ['Device Instance', 12], ['Max Master', 9], [_r('IP-adres'), 15], [_r('Poort'), 8], ['Unit ID', 8], [_r('Baudrate'), 9], [_r('Pariteit'), 8], [_r('Stopbits'), 8], [_r('Bus / segment'), 13], [_r('Signaal min → max'), 16], [_r('Terugmelding'), 13], [_r('Naam GBS'), 18], [_r('Opmerking'), 30]];
@@ -607,12 +607,11 @@ async function buildXlsx(p) {
       band(PL, r, 2, 10, [ppTitle(pp), pp.r.rev ? 'rev. ' + pp.r.rev : ''].filter(Boolean).join(' — ')); PL.height(r, 16); r++;
       const im = await planImage(pp, 2000);
       if (im) { let w = 1000, h = Math.round(w * im.h / im.w); if (h > 640) { h = 640; w = Math.round(640 * im.w / im.h); } PL.image(im.url, r, 2, w, h, { dy: 4 }); PL.height(r, Math.round((h + 8) * 0.75)); r++; }
-      [_r('Code'), _r('Luchtgroep'), _r('Lokaal'), _r('Type'), _r('Ontwerp m³/h'), _r('Eerste meting'), _r('Controlemeting'), _r('Afwijking'), _r('Status')].forEach((h, k) => PL.set(r, 2 + k, h, S.th)); r++; const R0 = { ...S.td, align: { h: 'right', v: 'center' }, numFmt: N0 };
-      for (const q of pp.pins) {
-        const pt = byId(p, q.id); if (!pt) continue; const x = planRow(p, pt);
+      [_r('Code'), _r('Luchtgroep'), _r('Lokaal'), _r('Type'), _r('Afmeting'), _r('Ontwerp m³/h'), _r('Opmerking')].forEach((h, k) => PL.set(r, 2 + k, h, S.th)); r++; const R0 = { ...S.td, align: { h: 'right', v: 'center' }, numFmt: N0 };
+      for (const q of pp.pins) { // 0.9.25: size and note; the measurements are in the balancing report
+        const pt = byId(p, q.id); if (!pt) continue;
         PL.set(r, 2, pt.code || '', S.td); PL.set(r, 3, sysOf(p, pt.systemId)?.code || '', S.tdC); PL.set(r, 4, pt.room || '', S.td); PL.set(r, 5, typeText(pt), S.td);
-        PL.set(r, 6, isNum(designOf(p, pt)) ? Math.round(designOf(p, pt)) : '', R0); PL.set(r, 7, isNum(ptQ(p, pt, 'eerste')) ? Math.round(ptQ(p, pt, 'eerste')) : '', R0);
-        PL.set(r, 8, isNum(ptQ(p, pt, 'controle')) ? Math.round(ptQ(p, pt, 'controle')) : '', R0); PL.set(r, 9, isNum(x.d) ? x.d : '', num(S.tdC, DEV)); PL.set(r, 10, x.st, S.stat); r++;
+        PL.set(r, 6, (pt.kind === 'duct' ? ductDims(pt) : pt.size) || '', S.tdC); PL.set(r, 7, isNum(designOf(p, pt)) ? Math.round(designOf(p, pt)) : '', R0); PL.set(r, 8, pt.note || '', S.note); PL.merge(r, 8, r, 10); r++;
       }
       r++;
     }
@@ -846,8 +845,11 @@ async function buildPdf(p) {
     const BT = H - 37; doc.setFillColor(...BAR); doc.rect(0, BT - 1, W, 1, 'F'); doc.setFillColor(...NAVY); doc.rect(0, BT, W, 37, 'F');
     const firm = p.info.company || Settings.v.company || '';
     font(10.5, 'bold', [255, 255, 255]); if (firm) doc.text(doc.splitTextToSize(t(firm), 118)[0], X, BT + 9.5);
-    font(7.6, 'normal', BAND2); if (Settings.v.address) doc.text(doc.splitTextToSize(t(Settings.v.address), 118)[0], X, BT + 15);
-    font(6.6, 'normal', BAND2); if (Settings.v.footer) doc.text(doc.splitTextToSize(t(Settings.v.footer), 118).slice(0, 2), X, BT + 20.5);
+    // 0.9.25: the address once — the footer line usually repeats the company and its address; then only the part the address line does not have
+    const adr = String(Settings.v.address || '').trim(); let foot = String(Settings.v.footer || '').trim();
+    if (adr && foot) { const key = (x) => x.toLowerCase().replace(/[^a-z0-9]+/g, ''); const ka = key(adr.split(/[·,|]/)[0] || ''); const parts = foot.split(/\s+[·|]\s+/).filter(x => !(ka && key(x).includes(ka)) && !(firm && key(x) === key(firm)) && !key(adr).includes(key(x))); foot = parts.join(' · '); }
+    font(7.6, 'normal', BAND2); if (adr) doc.text(doc.splitTextToSize(t(adr), 118)[0], X, BT + 15);
+    font(6.6, 'normal', BAND2); if (foot) doc.text(doc.splitTextToSize(t(foot), 118).slice(0, 2), X, BT + 20.5);
     font(7.2, 'normal', BAND2); doc.text(t(_r('Editie {d}', { d: dateNL(p.info.date) }) + (p.info.rev ? ' · ' + _r('versie {v}', { v: p.info.rev }) : '')), W - X, BT + 9.5, { align: 'right' });
     const bandLine = p.cover?.band || (p.info.schema ? _r('Technisch schema: {v}', { v: p.info.schema }) : '');
     if (bandLine) doc.text(doc.splitTextToSize(t(bandLine), 62).slice(0, 2), W - X, BT + 15, { align: 'right' });
@@ -1041,7 +1043,7 @@ async function buildPdf(p) {
   }
 
   /* ---- kanaalmetingen & regelorganen (landscape) ---- */
-  const ducts = reportGroups(p, p.points.filter(x => x.kind === 'duct')).flatMap(g => g.pts);
+  const ducts = reportGroups(p, p.points.filter(x => ductMeasured(p, x))).flatMap(g => g.pts); // 0.9.25: only duct traverses that were measured
   if (ducts.length) {
     newPage('landscape', SEC.km);
     ptitle(_r('KANAALMETINGEN'), _r('Luchtdichtheid {rho} kg/m³', { rho: nl(p.rho, 2) }) + ' · v = √(2·pd/ρ) · Q = v · A · 3600');
@@ -1088,23 +1090,27 @@ async function buildPdf(p) {
       didParseCell: statusCell(11),
     });
   }
-  const regs = reportGroups(p, p.points.filter(x => hasReg(x) && !isDev(x) && !DEVICE_ONLY.includes(x.reg.type))).flatMap(g => g.pts);
+  const regs = reportGroups(p, p.points.filter(x => motorised(x))).flatMap(g => g.pts); // 0.9.25: only motorised dampers; the positions of all dampers are in the balancing report
   const sameOrNew = (sec, fresh) => { let kp = null, ks = null; if (fresh || y > lay().bottom - 50) newPage('landscape', sec); else { kp = pageNo(); ks = secMap[kp]; section = sec; if (!secStart[section]) secStart[section] = pageNo(); y += 4; } return () => { if (kp) secMap[kp] = ks; }; };
   if (regs.length) {
     const done = sameOrNew(SEC.ro, !ducts.length && !PGn.length);
-    ptitle(_r('REGELORGANEN'));
+    ptitle(_r('REGELORGANEN'), _r('Gemotoriseerde regelorganen (CAV / VAV en kleppen met motor): instellingen, motor, sturing en adres · de standen van alle kleppen staan in het inregelrapport'));
+    const dupR = ctlDupes(p);
     table({
-      head: [[_r('Luchtgroep'), _r('Code'), _r('Ruimte / zone'), 'PU/ EX', _r('Type'), _r('Model / DN'), 'Vmin m³/h', 'Vnom m³/h', 'Vmax m³/h', _r('Sturing / adres'), _r('Stand vóór'), _r('Stand na'), _r('Vergrendeld'), _r('Opmerking')]],
-      body: regs.map(pt => [sysOf(p, pt.systemId)?.code || '', pt.code, pt.room, RL.pe[pt.dir], RL.reg[pt.reg.type], pt.reg.model, n0(pt.reg.vmin), n0(pt.reg.vnom), n0(pt.reg.vmax), regCtlR(pt), pt.reg.posBefore, pt.reg.posAfter, pt.reg.locked ? RL.yes[1] : RL.yes[0], [pt.status ? RL.status[pt.status] : '', pt.note, blockedNote(p, pt)].filter(Boolean).join(' · ')]),
-      styles: { font: FONT, fontSize: 7, cellPadding: { top: 0.9, bottom: 0.9, left: 1.2, right: 1.2 }, textColor: INK, lineColor: LINE, lineWidth: { bottom: 0.2 }, valign: 'middle' },
-      columnStyles: { 1: { fontStyle: 'bold' }, 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { cellWidth: 38 }, 13: { cellWidth: 44 } },
+      head: [[_r('Luchtgroep'), _r('Code'), _r('Ruimte / zone'), 'PU/ EX', _r('Type'), _r('Model / DN'), _r('Motor'), 'Vmin m³/h', 'Vnom m³/h', 'Vmax m³/h', 'Δp min Pa', _r('Modus'), _r('Sturing / adres'), _r('Naam GBS'), _r('Opmerking')]],
+      body: regs.map(pt => { const c = pt.reg.ctl || {}; const isDup = dupR.some(d => d.items.some(x => x.ctl === c));
+        return [sysOf(p, pt.systemId)?.code || '', pt.code, pt.room, RL.pe[pt.dir], RL.reg[pt.reg.type], pt.reg.model, pt.reg.act || '', n0(pt.reg.vmin), n0(pt.reg.vnom), n0(pt.reg.vmax), n0(pt.reg.dpmin), RLab().opmode[pt.reg.opmode] || '', regCtlLineR(pt), c.bms || '',
+          [isDup ? _r('DUBBEL ADRES') : '', pt.status ? RL.status[pt.status] : '', pt.note, c.note, blockedNote(p, pt)].filter(Boolean).join(' · ')]; }),
+      styles: { font: FONT, fontSize: 6.8, cellPadding: { top: 0.9, bottom: 0.9, left: 1.1, right: 1.1 }, textColor: INK, lineColor: LINE, lineWidth: { bottom: 0.2 }, valign: 'middle' },
+      columnStyles: { 1: { fontStyle: 'bold' }, 6: { cellWidth: 24 }, 7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' }, 10: { halign: 'right' }, 12: { cellWidth: 40 }, 14: { cellWidth: 40 } },
+      didParseCell: (c) => { if (c.section === 'body' && c.column.index === 14 && String(c.cell.raw || '').includes(_r('DUBBEL ADRES'))) Object.assign(c.cell.styles, { textColor: rgb(HS.badT), fontStyle: 'bold' }); },
     });
     done();
   }
-  const ctlE = ctlEntries(p);
+  const ctlE = ctlEntries(p).filter(e => e.kind !== 'reg' || !regs.includes(e.pt)); // 0.9.25: VAV / CAV are in «Regelorganen», once
   if (ctlE.length) {
     const done = sameOrNew(SEC.ad, false);
-    ptitle(_r('STURING EN ADRESSERING'), _r('Ventilatoren, regelaars van de luchtgroepen en VAV / CAV-regelaars met hun sturing en adres — voor de integrator van het GBS.'));
+    ptitle(_r('STURING EN ADRESSERING'), _r('Ventilatoren en regelaars van de luchtgroepen met hun sturing en adres — voor de integrator van het GBS. VAV / CAV: zie «Regelorganen».'));
     const dup = ctlDupes(p); const dupOf = (e) => dup.some(d => d.items.some(x => x.ctl === e.ctl));
     table({
       head: [[_r('Luchtgroep'), _r('Toestel'), _r('Type'), _r('Voeding'), _r('Sturing'), _r('Adres / MAC'), 'Device Instance', _r('IP : poort'), _r('Bus / segment'), _r('Communicatie'), _r('Naam GBS'), _r('Opmerking')]],
@@ -1182,9 +1188,10 @@ async function buildPdf(p) {
     dotLegend();
     newPage('portrait', SEC.pl);
     h2(ppTitle(pp), true);
-    const body = pp.pins.map(q => byId(p, q.id)).filter(Boolean).map(pt => { const x = planRow(p, pt); return [pt.code || '', sysOf(p, pt.systemId)?.code || '', pt.room || '', typeText(pt), n0(designOf(p, pt)), n0(ptQ(p, pt, 'eerste') && Math.round(ptQ(p, pt, 'eerste'))), n0(ptQ(p, pt, 'controle') && Math.round(ptQ(p, pt, 'controle'))), dv(x.d), x.st]; });
-    table({ head: [[_r('Code'), _r('Luchtgroep'), _r('Lokaal'), _r('Type'), _r('Ontwerp m³/h'), _r('Eerste meting'), _r('Controlemeting'), _r('Afwijking'), _r('Status')]], body,
-      columnStyles: { 0: { fontStyle: 'bold' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' }, 8: { halign: 'center' } }, didParseCell: statusCell(8) });
+    // 0.9.25: under the plan the points with their size and note — the measurements are in the balancing report
+    const body = pp.pins.map(q => byId(p, q.id)).filter(Boolean).map(pt => [pt.code || '', sysOf(p, pt.systemId)?.code || '', pt.room || '', typeText(pt), (pt.kind === 'duct' ? ductDims(pt) : pt.size) || '', n0(designOf(p, pt)), pt.note || '']);
+    table({ head: [[_r('Code'), _r('Luchtgroep'), _r('Lokaal'), _r('Type'), _r('Afmeting'), _r('Ontwerp m³/h'), _r('Opmerking')]], body,
+      columnStyles: { 0: { fontStyle: 'bold' }, 4: { cellWidth: 20 }, 5: { halign: 'right', cellWidth: 18 }, 6: { cellWidth: 44 } } });
   }
 
   /* ---- opmerkingen en foto's ---- */
@@ -1266,7 +1273,7 @@ async function buildPdf(p) {
   ptitle(SEC.toc);
   y += 4;
   const toc = [[SEC.nota, _r('Voorwerp, gegevens, methodiek, resultaten, conclusie en handtekeningen')], [SEC.lg, _r('Systemen en luchtgroepen: debiet, instelling en stroom van de ventilatoren, drukken, Σ eindorganen, balans')],
-    [SEC.ir, _r('Air Balancing Report per meetpunt — vóór en na inregeling (liggend)')], [SEC.km, _r('Pitot- en snelheidstraverses in de kanalen')], [SEC.kd, _r('Statische drukken, drukindex van het systeem en drukverliezen per master / tak')], [SEC.ro, _r('Iris- en registerkleppen, CAV/VAV en plenumkleppen: standen vóór en na')], [SEC.ad, _r('Ventilatoren, regelaars en VAV / CAV: voeding, sturing en adres (GBS)')], [SEC.bk, _r('Brand-, afsluit- en terugslagkleppen per verdieping / zone')], [SEC.cl, _r('De stappen van de inbedrijfstelling, met de aanvulling per luchtgroep')], [SEC.tf, _r('Technische fiches van de fabrikanten bij de regelorganen en CAV/VAV-regelaars')],
+    [SEC.ir, _r('Air Balancing Report per meetpunt — vóór en na inregeling (liggend)')], [SEC.km, _r('Pitot- en snelheidstraverses in de kanalen')], [SEC.kd, _r('Statische drukken, drukindex van het systeem en drukverliezen per master / tak')], [SEC.ro, _r('Gemotoriseerde regelorganen: instellingen, motor, sturing en adres')], [SEC.ad, _r('Ventilatoren en regelaars van de luchtgroepen: voeding, sturing en adres (GBS)')], [SEC.bk, _r('Brand-, afsluit- en terugslagkleppen per verdieping / zone')], [SEC.cl, _r('De stappen van de inbedrijfstelling, met de aanvulling per luchtgroep')], [SEC.tf, _r('Technische fiches van de fabrikanten bij de regelorganen en CAV/VAV-regelaars')],
     [SEC.pl, _r('Ligging van de meetpunten op de plannen, met de status')], [SEC.op, _r('Opmerkingen per pagina, per luchtgroep en per meetpunt')]];
   for (const [sec, sub] of toc) {
     if (!secStart[sec]) continue;

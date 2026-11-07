@@ -11,6 +11,7 @@ Store.setState(STANDALONE ? 'local' : 'connecting');
 let shown = false; const show = () => { if (!shown) { shown = true; render(); } };
 Store.loadDevice().then((changed) => {
   if (DEMO_ED && !Object.keys(Store.projects).length) { const ex = exampleProject(); Store.projects[ex.id] = ex; touch(ex); changed = true; addExamplePlan(ex).then(() => { if (S.view === 'home') render(); }); } // demo edition: start with the example
+  setTimeout(() => AutoBackup.auto().catch(() => { }), 3000); // 0.9.25: automatic copy of the projects after an update and once a day
   if (!shown) show(); else if (changed && !S.ed && !S.dlg && !(document.activeElement && document.activeElement.matches('input, textarea, select'))) render(); });
 setTimeout(show, 1200);
 Platform.init();
