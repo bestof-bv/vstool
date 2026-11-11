@@ -79,6 +79,7 @@ const BATCH = {
         } else if (role === 'text') {
           const t = (await f.text()).trim().slice(0, 20000); const n = p.notes.project || (p.notes.project = { text: '', photos: [] });
           n.text = [n.text, `— ${f.name} —\n${t}`].filter(Boolean).join('\n\n'); done.text++;
+          if (withAi) tables.push(this.textRef(t, f.name)); // 0.9.32: with AI the text goes along (makes, types, notes of the designer)
         } else if (role === 'photo') { const ph = await Photos.add(f); photoList(p, 'page:project').push(ph); done.photo++; }
         else { await this.keep(p, f, role); done.attach++; }
       } catch (e) {
@@ -115,6 +116,8 @@ const BATCH = {
     let pts = []; try { pts = (IMP.parse(sheets, name).points || []).map(q => ({ code: q.code || '', room: q.room || '', dir: q.dir === 'A' ? 'EX' : q.dir === 'T' ? 'PU' : '', q: isNum(q.designQ) ? q.designQ : null, size: q.size || '', model: q.model || '', reg: typeof q.reg === 'string' ? q.reg : '' })); } catch (e) { }
     return { name, text: L.join('\n').slice(0, 60000), pts };
   },
+  /** a text (notes, a description of the installation) as a reference for the AI */
+  textRef(t, name) { return { name, kind: 'text', text: String(t || '').trim().slice(0, 20000), pts: [] }; },
   /** a file kept as it is (attachment of the project, on the device, stored once by its hash) */
   async keep(p, f, role) {
     if (f.size > 25 * 1048576) throw Object.assign(new Error('big'), { code: 'storage' });
@@ -136,7 +139,9 @@ const BATCH = {
     const tabs = (p.attach || []).filter(a => /\.(xlsx|xlsm|csv)$/i.test(a.name));
     if (!docs.length) { toast(__('Add the plans first')); return; }
     const isSch = (n) => /^sch[eé]ma\s*·|pid|p&id|sch[eé]ma|aeraul|principe|riser/i.test(n) || n.startsWith(__('Schema') + ' ·');
-    S.dlg = { type: 'aidocs', docs: docs.map(d => ({ id: d.id, name: d.name, role: isSch(d.name) ? 'schema' : 'plan', on: true })), tabs: tabs.map(a => ({ id: a.id, name: a.name, on: true })) };
+    const tabsAll = tabs.map(a => ({ id: a.id, name: a.name, on: true }));
+    const nt = String((p.notes && p.notes.project && p.notes.project.text) || '').trim(); if (nt) tabsAll.push({ id: 'notes', name: __('Notes of the project'), on: true, note: true });
+    S.dlg = { type: 'aidocs', docs: docs.map(d => ({ id: d.id, name: d.name, role: isSch(d.name) ? 'schema' : 'plan', on: true })), tabs: tabsAll };
     pushNav(); renderSheet();
   },
   aiPickHtml(d) {
@@ -144,7 +149,7 @@ const BATCH = {
     return sheetFrame(__('Read the plans with AI'), `
       <section class="card"><p class="small" style="margin:0">${__h('Choose the plans, schemas and tables of the project the assistant reads together.')}</p>
         <div class="stack-s">${d.docs.map((it, i) => `<label class="row batch-it"><input type="checkbox" data-aidocon="d${i}"${it.on ? ' checked' : ''}><span class="grow small"><b>${esc(it.name)}</b></span>${sel(it, i)}</label>`).join('')}
-        ${d.tabs.map((it, i) => `<label class="row batch-it"><input type="checkbox" data-aidocon="t${i}"${it.on ? ' checked' : ''}><span class="chip">${esc(__('table'))}</span><span class="grow small"><b>${esc(it.name)}</b></span></label>`).join('')}</div>
+        ${d.tabs.map((it, i) => `<label class="row batch-it"><input type="checkbox" data-aidocon="t${i}"${it.on ? ' checked' : ''}><span class="chip">${esc(it.note ? __('text') : __('table'))}</span><span class="grow small"><b>${esc(it.name)}</b></span></label>`).join('')}</div>
       </section>`,
       `<button class="btn" data-act="closeSheet">${__h('Cancel')}</button><button class="btn primary" data-act="aiDocsGo"${d.docs.some(x => x.on) ? '' : ' disabled'}>✦ ${__h('Read with AI')}</button>`);
   },
@@ -159,7 +164,9 @@ const BATCH = {
       sources.push({ file: new File([b], it.name + ext, { type: b.type || (r.kind === 'pdf' ? 'application/pdf' : 'image/jpeg') }), role: it.role, doc: doc.id, name: it.name });
     }
     for (const it of d.tabs) {
-      if (!it.on) continue; const a = (p.attach || []).find(x => x.id === it.id); if (!a) continue;
+      if (!it.on) continue;
+      if (it.note) { tables.push(this.textRef((p.notes.project || {}).text, __('Notes of the project'))); continue; }
+      const a = (p.attach || []).find(x => x.id === it.id); if (!a) continue;
       try { const b = await Photos.getLocal(a.key); if (!b) continue; tables.push(this.table(await this.readSheets(new File([b], a.name, { type: a.mime || b.type })), a.name)); }
       catch (e) { toast(__('Could not read the file') + ' · ' + a.name); }
     }

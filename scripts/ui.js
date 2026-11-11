@@ -999,7 +999,7 @@ function docsBtn(mode, cls = '') {
 /** 0.9.26: button + file input of the AI plan assistant (not in the demo edition) */
 function aiBtn(mode, cls = '') {
   if (typeof AIP === 'undefined') return '';
-  return `<button class="btn sm ${cls}" data-act="aiPlan" data-mode="${mode}"${cls ? ' style="justify-self:start"' : ''}>✦ ${__h('Read a plan with AI')}</button><input type="file" id="aiPlanFile-${mode}" data-aifile="${mode}" class="vh" multiple accept=".pdf,application/pdf,image/*,.xlsx,.xlsm,.csv,.dxf">`;
+  return `<button class="btn sm ${cls}" data-act="aiPlan" data-mode="${mode}"${cls ? ' style="justify-self:start"' : ''}>✦ ${__h('Read a plan with AI')}</button><input type="file" id="aiPlanFile-${mode}" data-aifile="${mode}" class="vh" multiple accept=".pdf,application/pdf,image/*,.xlsx,.xlsm,.csv,.dxf,.txt,text/plain">`;
 }
 function sheetFrame(title, body, foot) {
   return `<div class="sheet" role="dialog" aria-modal="true">
