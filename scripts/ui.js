@@ -1457,6 +1457,7 @@ function dialogHTML(p, d) {
   }
   if (d.type === 'aiplan') return AIP.html(d);
   if (d.type === 'batch') return BATCH.html(d);
+  if (d.type === 'aidocs') return BATCH.aiPickHtml(d);
   if (d.type === 'trace') return MMD.dlgHtml(d);
   if (d.type === 'import') {
     const x = d.d; const sysCodes = [...new Set([...x.systems.map(s => s.code), ...x.points.map(q => q.sysCode).filter(Boolean)])];
@@ -1689,6 +1690,8 @@ document.addEventListener('click', async (e) => {
     case 'aiPlan': { const el = document.getElementById('aiPlanFile-' + (t.dataset.mode || 'new')); if (el) el.click(); break; }
     case 'batchGo': BATCH.go(false); break;
     case 'batchAi': BATCH.go(true); break;
+    case 'aiDocs': { const p = cur(); if (p) BATCH.aiPick(p); break; }
+    case 'aiDocsGo': BATCH.aiPickGo(); break;
     case 'traceShow': S.dlg = { type: 'trace', i: Number(t.dataset.v) }; pushNav(); renderSheet(); break;
     case 'traceDl': { const p = cur(); const tr = p && (p.traces || [])[Number(t.dataset.v)]; if (tr) offerFile(`routes_${(p.info.name || 'project').replace(/[^\w-]+/g, '_')}.mmd`, new Blob([tr.mermaid], { type: 'text/plain' }), p); break; }
     case 'traceDel': { const p = cur(); if (p && p.traces) { p.traces.splice(Number(t.dataset.v), 1); touch(p); } closeSheet(); render(); break; }
@@ -1925,6 +1928,8 @@ function onField(e) {
   { const perm = Access.fieldPerm(el); if (perm && !Access.can(perm)) { if (e.type === 'change') toast(Access.why(perm)); return; } }
   if (el.id === 'importFile' && e.type === 'change') return importFile(el);
   if (el.dataset.batch !== undefined) { if (e.type !== 'change') return; const fl = el.files ? [...el.files] : []; el.value = ''; if (fl.length) BATCH.open(fl, el.dataset.batch); return; }
+  if (el.dataset.aidocrole !== undefined) { const it = S.dlg && S.dlg.type === 'aidocs' && S.dlg.docs[Number(el.dataset.aidocrole)]; if (it) it.role = el.value; return; }
+  if (el.dataset.aidocon !== undefined) { if (e.type !== 'change') return; const d = S.dlg; if (!d || d.type !== 'aidocs') return; const v = el.dataset.aidocon; const it = (v[0] === 'd' ? d.docs : d.tabs)[Number(v.slice(1))]; if (it) { it.on = el.checked; renderSheet(); } return; }
   if (el.dataset.batchrole !== undefined) { const it = S.dlg && S.dlg.type === 'batch' && S.dlg.items[Number(el.dataset.batchrole)]; if (it) { it.role = el.value; if (e.type === 'change') renderSheet(); } return; }
   if (el.dataset.aiinfo !== undefined) { if (typeof AIP !== 'undefined') AIP.infoEdit(el); return; }
   if (el.id === 'airFile') { if (e.type !== 'change') return; const fl = el.files ? [...el.files] : []; el.value = ''; if (fl.length) AIR.addExtra(fl); return; }

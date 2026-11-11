@@ -130,6 +130,43 @@ const BATCH = {
     touch(p); render();
   },
   /** list of the attachments (and the route trees) of the project, under «Plans and documents» */
+  /** 0.9.31: the plans, schemas and tables already in the project → the AI assistant (choose which, plan or schema) */
+  aiPick(p) {
+    const docs = (p.docs || []).filter(d => d.revs && d.revs.length);
+    const tabs = (p.attach || []).filter(a => /\.(xlsx|xlsm|csv)$/i.test(a.name));
+    if (!docs.length) { toast(__('Add the plans first')); return; }
+    const isSch = (n) => /^sch[eé]ma\s*·|pid|p&id|sch[eé]ma|aeraul|principe|riser/i.test(n) || n.startsWith(__('Schema') + ' ·');
+    S.dlg = { type: 'aidocs', docs: docs.map(d => ({ id: d.id, name: d.name, role: isSch(d.name) ? 'schema' : 'plan', on: true })), tabs: tabs.map(a => ({ id: a.id, name: a.name, on: true })) };
+    pushNav(); renderSheet();
+  },
+  aiPickHtml(d) {
+    const sel = (it, i) => `<select data-aidocrole="${i}"><option value="plan"${it.role === 'plan' ? ' selected' : ''}>${esc(__(this.ROLES.plan))}</option><option value="schema"${it.role === 'schema' ? ' selected' : ''}>${esc(__(this.ROLES.schema))}</option></select>`;
+    return sheetFrame(__('Read the plans with AI'), `
+      <section class="card"><p class="small" style="margin:0">${__h('Choose the plans, schemas and tables of the project the assistant reads together.')}</p>
+        <div class="stack-s">${d.docs.map((it, i) => `<label class="row batch-it"><input type="checkbox" data-aidocon="d${i}"${it.on ? ' checked' : ''}><span class="grow small"><b>${esc(it.name)}</b></span>${sel(it, i)}</label>`).join('')}
+        ${d.tabs.map((it, i) => `<label class="row batch-it"><input type="checkbox" data-aidocon="t${i}"${it.on ? ' checked' : ''}><span class="chip">${esc(__('table'))}</span><span class="grow small"><b>${esc(it.name)}</b></span></label>`).join('')}</div>
+      </section>`,
+      `<button class="btn" data-act="closeSheet">${__h('Cancel')}</button><button class="btn primary" data-act="aiDocsGo"${d.docs.some(x => x.on) ? '' : ' disabled'}>✦ ${__h('Read with AI')}</button>`);
+  },
+  async aiPickGo() {
+    const d = S.dlg; const p = cur(); if (!d || d.type !== 'aidocs' || !p) return;
+    const sources = [], tables = [];
+    for (const it of d.docs) {
+      if (!it.on) continue; const doc = (p.docs || []).find(x => x.id === it.id); if (!doc) continue;
+      const r = docCur(doc); const b = await Docs.blob(r.file);
+      if (!b) { toast(__('This file is not on this device') + ' · ' + it.name); continue; }
+      const ext = r.kind === 'pdf' ? '.pdf' : (/png/.test(b.type) ? '.png' : '.jpg');
+      sources.push({ file: new File([b], it.name + ext, { type: b.type || (r.kind === 'pdf' ? 'application/pdf' : 'image/jpeg') }), role: it.role, doc: doc.id, name: it.name });
+    }
+    for (const it of d.tabs) {
+      if (!it.on) continue; const a = (p.attach || []).find(x => x.id === it.id); if (!a) continue;
+      try { const b = await Photos.getLocal(a.key); if (!b) continue; tables.push(this.table(await this.readSheets(new File([b], a.name, { type: a.mime || b.type })), a.name)); }
+      catch (e) { toast(__('Could not read the file') + ' · ' + a.name); }
+    }
+    if (!sources.length) { toast(__('Choose a PDF of the drawings')); return; }
+    S.dlg = null; closeSheetNow();
+    AIP.open(sources, 'merge', tables);
+  },
   listHtml(p) {
     const L = p.attach || []; const T = p.traces || []; if (!L.length && !T.length) return '';
     const kb = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' kB';

@@ -63,7 +63,7 @@ const ACT_PERM = {
   fanAdd: 'structure.edit', fanEdit: 'structure.edit', fanCopy: 'structure.edit', fanDel: 'structure.edit', fanAll: 'structure.edit', sysLeave: 'structure.edit', sysUp: 'structure.edit', sysDown: 'structure.edit', sysSort: 'structure.edit',
   reorder: 'structure.edit', ptUp: 'structure.edit', ptDown: 'structure.edit', // 0.9.18: order on a branch
   addPt: 'point.add', addDevice: 'point.add', addChild: 'point.add', dupPt: 'point.add', bulk: 'point.add', bulkCreate: 'point.add', devKid: 'structure.edit',
-  importXlsx: 'import.excel', impApply: 'import.excel', importTpl: 'import.excel', aiPlan: 'ai.plan', aiRun: 'ai.plan', aiApply: 'ai.plan', airStart: 'ai.plan', airDel: 'ai.plan', airAdd: 'ai.plan', batchAi: 'ai.plan', aiTreeApply: 'ai.plan', aiTreeNext: 'ai.plan',
+  importXlsx: 'import.excel', impApply: 'import.excel', importTpl: 'import.excel', aiPlan: 'ai.plan', aiRun: 'ai.plan', aiApply: 'ai.plan', airStart: 'ai.plan', airDel: 'ai.plan', airAdd: 'ai.plan', batchAi: 'ai.plan', aiDocs: 'ai.plan', aiDocsGo: 'ai.plan', aiTreeApply: 'ai.plan', aiTreeNext: 'ai.plan',
   pkNew: 'package.manage', pkCreate: 'package.manage', pkMerge: 'package.manage', pkDel: 'package.manage', pkAskDel: 'package.manage', pkCloseRec: 'package.manage', pkAccept: 'package.manage', pkSheet: 'package.manage', pkSend: 'package.manage',
   genConclusion: 'report.edit', genConclusionYes: 'report.edit', clearSig: 'report.edit', cvCrop: 'report.edit', cvDel: 'report.edit', pdfUse: 'report.edit', pgPick: 'report.edit', cropDone: 'report.edit',
   xlsx: 'report.export', pdf: 'report.export', pdfZip: 'report.export', clSet: 'checklist.edit', clReset: 'checklist.edit', clDraft: 'checklist.edit', clGo: 'report.export',

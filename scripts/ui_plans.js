@@ -39,6 +39,7 @@ function plansCardHTML(p) {
     ${rows ? `<div class="stack-s">${rows}</div>` : ''}
     ${typeof BATCH !== 'undefined' ? BATCH.listHtml(p) : ''}
     <div class="row">${can && typeof docsBtn === 'function' ? docsBtn('docs') : ''}${can ? `<label class="btn sm${docs.length ? '' : ' primary'}" for="docAdd">${ICON_PLAN} ${__h('Add a plan')}<input id="docAdd" class="vh" type="file" accept="application/pdf,.pdf,image/*" multiple data-docadd></label>` : ''}
+      ${can && docs.length && typeof AIP !== 'undefined' && Access.can('ai.plan') && !Demo.on() ? `<button class="btn sm" data-act="aiDocs">✦ ${__h('Read the plans with AI')}</button>` : ''}
       ${docs.length && p.points.length ? `<button class="btn sm" data-act="pvPlace">${__h('Place points on the plan')}${noPin ? ` <span class="chip">${noPin}</span>` : ''}</button>` : ''}</div>
   </section>`;
 }
