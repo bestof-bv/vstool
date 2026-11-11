@@ -60,7 +60,7 @@ const BATCH = {
     const d = S.dlg; if (!d || d.type !== 'batch') return;
     let p = cur();
     if (d.mode === 'new' || !p) { p = newProject(); if (!p.info.company) p.info.company = Settings.v.company; Store.projects[p.id] = p; S.pid = p.id; }
-    const done = { plan: 0, table: 0, text: 0, photo: 0, attach: 0, skip: 0 }; const sources = []; const errs = [];
+    const done = { plan: 0, table: 0, text: 0, photo: 0, attach: 0, skip: 0 }; const sources = [], tables = []; const errs = [];
     S.dlg = null; closeSheetNow(); toast(__('Saving the documents…'));
     for (const it of d.items) {
       const f = it.file; const role = it.kind === 'dwg' ? 'skip' : it.role;
@@ -73,8 +73,9 @@ const BATCH = {
           done.plan++; sources.push({ file, role, doc: r.d.id, name: f.name });
         } else if (role === 'table') {
           if (typeof IMP === 'undefined') throw Object.assign(new Error('no import'), { code: 'noimp' });
-          const x = await this.readTable(f); const n = IMP.apply(p, x, { withInfo: !p.points.length });
-          done.table++; await this.keep(p, f, role); if (!n) errs.push(__('{f}: no points found in the table', { f: f.name }));
+          const sheets = await this.readSheets(f); await this.keep(p, f, role); done.table++;
+          if (withAi) { tables.push(this.table(sheets, f.name)); continue; } // with AI: the table helps to read the plans (codes, sizes, types), it is not imported on its own
+          const n = IMP.apply(p, IMP.parse(sheets, f.name), { withInfo: !p.points.length }); if (!n) errs.push(__('{f}: no points found in the table', { f: f.name }));
         } else if (role === 'text') {
           const t = (await f.text()).trim().slice(0, 20000); const n = p.notes.project || (p.notes.project = { text: '', photos: [] });
           n.text = [n.text, `— ${f.name} —\n${t}`].filter(Boolean).join('\n\n'); done.text++;
@@ -87,12 +88,13 @@ const BATCH = {
     }
     touch(p); openProject(p.id, d.mode === 'new' ? 0 : S.step ?? 1);
     toast([__('Plans and schemas: {n}', { n: done.plan }), done.table ? __('tables imported: {n}', { n: done.table }) : '', done.attach ? __('attachments: {n}', { n: done.attach }) : ''].filter(Boolean).join(' · ') + (errs.length ? ' · ' + errs.join(' · ') : ''));
-    if (withAi && sources.length && typeof AIP !== 'undefined') AIP.open(sources, 'merge');
+    if (withAi && sources.length && typeof AIP !== 'undefined') AIP.open(sources, 'merge', tables);
   },
   /** a table → the import: .xlsx / .xlsm as usual, .csv here (separator ; , or tab, quotes), old .xls asks for .xlsx */
-  async readTable(f) {
+  /** a table file → sheets [{ name, rows }]: .xlsx / .xlsm as usual, .csv here (separator ; , or tab, quotes), old .xls asks for .xlsx */
+  async readSheets(f) {
     if (this.kind(f) === 'csv') {
-      const t = (await f.text()).replace(/^\uFEFF/, ''); const first = t.split(/\r?\n/)[0] || '';
+      const t = (await f.text()).replace(/^﻿/, ''); const first = t.split(/\r?\n/)[0] || '';
       const sep = [';', '\t', ','].sort((a, b) => first.split(b).length - first.split(a).length)[0];
       const rows = []; let row = [], cell = '', q = false;
       for (let i = 0; i < t.length; i++) {
@@ -102,9 +104,16 @@ const BATCH = {
       }
       if (cell || row.length) { row.push(cell); rows.push(row); }
       const num = (v) => { const s2 = String(v).trim(); return /^-?\d+([.,]\d+)?$/.test(s2) ? Number(s2.replace(',', '.')) : s2; };
-      return IMP.parse([{ name: String(f.name).replace(/\.csv$/i, ''), rows: rows.filter(r => r.some(c => String(c).trim())).map(r => r.map(num)) }], f.name);
+      return [{ name: String(f.name).replace(/\.csv$/i, ''), rows: rows.filter(r => r.some(c => String(c).trim())).map(r => r.map(num)) }];
     }
-    try { return await IMP.readFile(f); } catch (e) { throw Object.assign(new Error('xls'), { code: this.ext(f) === 'xls' ? 'xls' : 'read' }); }
+    try { return await XLSXR.read(await f.arrayBuffer()); } catch (e) { throw Object.assign(new Error('xls'), { code: this.ext(f) === 'xls' ? 'xls' : 'read' }); }
+  },
+  async readTable(f) { return IMP.parse(await this.readSheets(f), f.name); },
+  /** a table for the AI: its text (≤ 400 rows) and the points the import recognises in it (code, room, flow, size, type) */
+  table(sheets, name) {
+    const L = []; for (const sh of sheets) { L.push(`# ${sh.name}`); for (const r of sh.rows) { const c = r.map(v => String(v ?? '').replace(/\s+/g, ' ').trim()); if (c.some(Boolean)) L.push(c.join(' | ')); if (L.length > 400) break; } if (L.length > 400) break; }
+    let pts = []; try { pts = (IMP.parse(sheets, name).points || []).map(q => ({ code: q.code || '', room: q.room || '', dir: q.dir === 'A' ? 'EX' : q.dir === 'T' ? 'PU' : '', q: isNum(q.designQ) ? q.designQ : null, size: q.size || '', model: q.model || '', reg: typeof q.reg === 'string' ? q.reg : '' })); } catch (e) { }
+    return { name, text: L.join('\n').slice(0, 60000), pts };
   },
   /** a file kept as it is (attachment of the project, on the device, stored once by its hash) */
   async keep(p, f, role) {
@@ -139,7 +148,7 @@ const MMD = {
     this.lib = new Promise((res, rej) => {
       if (window.mermaid) return res(window.mermaid);
       const sc = document.createElement('script'); sc.src = (typeof LIB !== 'undefined' && LIB.mermaid) || 'vendor/mermaid.min.js';
-      sc.onload = () => { try { window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'neutral', flowchart: { htmlLabels: false, useMaxWidth: true } }); res(window.mermaid); } catch (e) { rej(e); } };
+      sc.onload = () => { try { window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'neutral', themeVariables: { fontSize: '16px' }, flowchart: { htmlLabels: false, useMaxWidth: false, nodeSpacing: 30, rankSpacing: 50 } }); res(window.mermaid); } catch (e) { rej(e); } };
       sc.onerror = () => { this.lib = null; rej(new Error('mermaid')); }; document.head.appendChild(sc);
     });
     return this.lib;
@@ -149,9 +158,41 @@ const MMD = {
   async hydrate(root = document) {
     for (const box of root.querySelectorAll('[data-mmd]:not([data-done])')) {
       box.dataset.done = '1'; const pre = box.querySelector('pre'); if (!pre) continue;
-      try { const svg = await this.svg(pre.textContent); const div = document.createElement('div'); div.className = 'mmd-svg'; div.innerHTML = svg; box.prepend(div); pre.hidden = true; }
+      try {
+        const svg = await this.svg(pre.textContent); const div = document.createElement('button'); div.type = 'button'; div.className = 'mmd-svg'; div.title = __('Tap to enlarge');
+        div.innerHTML = svg + `<span class="mmd-hint">⤢ ${__h('Tap to enlarge')}</span>`; div.addEventListener('click', () => this.zoom(svg)); box.prepend(div); pre.hidden = true;
+      }
       catch (e) { console.warn('mermaid', e); box.insertAdjacentHTML('afterbegin', `<p class="small muted">${__h('The drawing could not be made here; the text of the tree is shown.')}</p>`); }
     }
+  },
+  /** full screen view of a drawing: pinch / wheel to zoom, drag to move, buttons − + and «whole» */
+  zoom(svg) {
+    const ov = document.createElement('div'); ov.className = 'mmd-zoom'; ov.setAttribute('role', 'dialog');
+    ov.innerHTML = `<div class="mmd-zbar"><button type="button" class="btn sm" data-z="out" aria-label="−">−</button><button type="button" class="btn sm" data-z="in" aria-label="+">+</button><button type="button" class="btn sm" data-z="fit">${__h('Whole tree')}</button><span class="spacer"></span><button type="button" class="btn sm primary" data-z="close">${__h('Close')}</button></div><div class="mmd-zstage"><div class="mmd-zin">${svg}</div></div>`;
+    document.body.appendChild(ov);
+    const st = ov.querySelector('.mmd-zstage'), inner = ov.querySelector('.mmd-zin'), el = inner.querySelector('svg');
+    const W = el.viewBox && el.viewBox.baseVal && el.viewBox.baseVal.width || el.getBBox().width, H = el.viewBox && el.viewBox.baseVal && el.viewBox.baseVal.height || el.getBBox().height;
+    el.setAttribute('width', W); el.setAttribute('height', H); el.style.maxWidth = 'none';
+    let k = 1, x = 0, y = 0; const set = () => { inner.style.transform = `translate(${x}px, ${y}px) scale(${k})`; };
+    const fit = () => { const r = st.getBoundingClientRect(); k = Math.min(r.width / W, r.height / H) * 0.95; x = (r.width - W * k) / 2; y = (r.height - H * k) / 2; set(); };
+    const zoomAt = (f, cx, cy) => { const nk = Math.max(0.1, Math.min(8, k * f)); x = cx - (cx - x) * nk / k; y = cy - (cy - y) * nk / k; k = nk; set(); };
+    const close = () => { ov.remove(); document.removeEventListener('keydown', key); };
+    const key = (e) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', key);
+    ov.addEventListener('click', (e) => { const z = e.target.closest('[data-z]'); if (!z) return; const r = st.getBoundingClientRect();
+      if (z.dataset.z === 'close') close(); else if (z.dataset.z === 'fit') fit(); else zoomAt(z.dataset.z === 'in' ? 1.4 : 1 / 1.4, r.width / 2, r.height / 2); });
+    st.addEventListener('wheel', (e) => { e.preventDefault(); const r = st.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+    const pts = new Map(); let last = null;
+    st.addEventListener('pointerdown', (e) => { st.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); last = null; });
+    st.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return; const prev = pts.get(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pts.size === 1) { x += e.clientX - prev[0]; y += e.clientY - prev[1]; set(); return; }
+      const [a, b] = [...pts.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]); const r = st.getBoundingClientRect();
+      if (last) zoomAt(d / last, (a[0] + b[0]) / 2 - r.left, (a[1] + b[1]) / 2 - r.top); last = d;
+    });
+    const up = (e) => { pts.delete(e.pointerId); last = null; };
+    st.addEventListener('pointerup', up); st.addEventListener('pointercancel', up);
+    requestAnimationFrame(fit);
   },
   dlgHtml(d) {
     const p = cur(); const t = p && (p.traces || [])[d.i]; if (!t) return sheetFrame(__('Route tree of the ducts (AI)'), '', `<button class="btn" data-act="closeSheet">${__h('Close')}</button>`);

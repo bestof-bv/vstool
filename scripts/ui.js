@@ -999,7 +999,7 @@ function docsBtn(mode, cls = '') {
 /** 0.9.26: button + file input of the AI plan assistant (not in the demo edition) */
 function aiBtn(mode, cls = '') {
   if (typeof AIP === 'undefined') return '';
-  return `<button class="btn sm ${cls}" data-act="aiPlan" data-mode="${mode}"${cls ? ' style="justify-self:start"' : ''}>✦ ${__h('Read a plan with AI')}</button><input type="file" id="aiPlanFile-${mode}" data-aifile="${mode}" class="vh" accept=".pdf,application/pdf">`;
+  return `<button class="btn sm ${cls}" data-act="aiPlan" data-mode="${mode}"${cls ? ' style="justify-self:start"' : ''}>✦ ${__h('Read a plan with AI')}</button><input type="file" id="aiPlanFile-${mode}" data-aifile="${mode}" class="vh" multiple accept=".pdf,application/pdf,image/*,.xlsx,.xlsm,.csv,.dxf">`;
 }
 function sheetFrame(title, body, foot) {
   return `<div class="sheet" role="dialog" aria-modal="true">
@@ -1928,7 +1928,7 @@ function onField(e) {
   if (el.dataset.batchrole !== undefined) { const it = S.dlg && S.dlg.type === 'batch' && S.dlg.items[Number(el.dataset.batchrole)]; if (it) { it.role = el.value; if (e.type === 'change') renderSheet(); } return; }
   if (el.dataset.aiinfo !== undefined) { if (typeof AIP !== 'undefined') AIP.infoEdit(el); return; }
   if (el.id === 'airFile') { if (e.type !== 'change') return; const fl = el.files ? [...el.files] : []; el.value = ''; if (fl.length) AIR.addExtra(fl); return; }
-  if (el.dataset.aifile !== undefined) { if (e.type !== 'change') return; const f = el.files && el.files[0]; el.value = ''; if (f) AIP.open(f, el.dataset.aifile); return; }
+  if (el.dataset.aifile !== undefined) { if (e.type !== 'change') return; const fl = el.files ? [...el.files] : []; el.value = ''; if (fl.length) AIP.openFiles(fl, el.dataset.aifile); return; }
   if (el.dataset.aied !== undefined) { if (e.type === 'change') AIP.edit(el); return; }
   if (el.id === 'importXlsxFile' && e.type === 'change') { const f = el.files && el.files[0]; el.value = ''; if (f) importXlsx(f, 'merge'); return; }
   if (el.dataset.addphoto !== undefined) { if (e.type !== 'change') return; const files = [...(el.files || [])]; const owner = el.dataset.addphoto; el.value = ''; if (files.length) addPhotos(owner, files); return; }
