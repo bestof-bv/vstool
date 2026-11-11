@@ -9,7 +9,7 @@ const DEMO_ED = EDITION === 'demo';
 const demoLimited = () => DEMO_ED || Demo.on();
 /** the demo edition: 1 own project (+ the example), 20 points a project; no crews, Excel import, backups, own catalogue entries, own style */
 const DEMO_LIMITS = { projects: 1, points: 20 };
-const DEMO_OFF = new Set(['import.excel', 'package.manage', 'project.backup', 'catalog.edit', 'org.profile', 'org.texts', 'org.languages', 'org.users', 'org.billing']);
+const DEMO_OFF = new Set(['import.excel', 'ai.plan', 'package.manage', 'project.backup', 'catalog.edit', 'org.profile', 'org.texts', 'org.languages', 'org.users', 'org.billing']);
 const ROLES = ['owner', 'admin', 'lead', 'tech', 'sub', 'viewer'];
 const ALL = ROLES, STAFF = ['owner', 'admin', 'lead', 'tech'], LEADS = ['owner', 'admin', 'lead'], ADMINS = ['owner', 'admin'];
 /** permission → roles that have it */
@@ -25,6 +25,7 @@ const PERMS = {
   'point.deleteOwn': ['owner', 'admin', 'lead', 'tech', 'sub'],
   'measure.edit': ['owner', 'admin', 'lead', 'tech', 'sub'],
   'import.excel': STAFF,
+  'ai.plan': STAFF,                 // 0.9.26: AI plan assistant (server: plan quota)
   'package.manage': LEADS,          // crews: packages, Excel measuring sheets, merge
   'report.edit': LEADS,             // conclusion, remarks, cover, signature
   'checklist.edit': STAFF,          // commissioning checklist (not in crew packages)
@@ -62,7 +63,7 @@ const ACT_PERM = {
   fanAdd: 'structure.edit', fanEdit: 'structure.edit', fanCopy: 'structure.edit', fanDel: 'structure.edit', fanAll: 'structure.edit', sysLeave: 'structure.edit', sysUp: 'structure.edit', sysDown: 'structure.edit', sysSort: 'structure.edit',
   reorder: 'structure.edit', ptUp: 'structure.edit', ptDown: 'structure.edit', // 0.9.18: order on a branch
   addPt: 'point.add', addDevice: 'point.add', addChild: 'point.add', dupPt: 'point.add', bulk: 'point.add', bulkCreate: 'point.add', devKid: 'structure.edit',
-  importXlsx: 'import.excel', impApply: 'import.excel', importTpl: 'import.excel',
+  importXlsx: 'import.excel', impApply: 'import.excel', importTpl: 'import.excel', aiPlan: 'ai.plan', aiRun: 'ai.plan', aiApply: 'ai.plan', airStart: 'ai.plan', airDel: 'ai.plan', airAdd: 'ai.plan', batchAi: 'ai.plan', aiTreeApply: 'ai.plan', aiTreeNext: 'ai.plan',
   pkNew: 'package.manage', pkCreate: 'package.manage', pkMerge: 'package.manage', pkDel: 'package.manage', pkAskDel: 'package.manage', pkCloseRec: 'package.manage', pkAccept: 'package.manage', pkSheet: 'package.manage', pkSend: 'package.manage',
   genConclusion: 'report.edit', genConclusionYes: 'report.edit', clearSig: 'report.edit', cvCrop: 'report.edit', cvDel: 'report.edit', pdfUse: 'report.edit', pgPick: 'report.edit', cropDone: 'report.edit',
   xlsx: 'report.export', pdf: 'report.export', pdfZip: 'report.export', clSet: 'checklist.edit', clReset: 'checklist.edit', clDraft: 'checklist.edit', clGo: 'report.export',

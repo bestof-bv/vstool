@@ -37,7 +37,8 @@ function plansCardHTML(p) {
   return `<section class="card"><div class="hd"><h2>${__h('Plans and documents')}</h2><span class="small muted">PDF · ${__h('images')}</span></div>
     <p class="small muted" style="margin:0">${__h('A plan is stored once and used everywhere: place the points on it, take fragments for the report from any point or page. Zooming renders the PDF sharp.')}</p>
     ${rows ? `<div class="stack-s">${rows}</div>` : ''}
-    <div class="row">${can ? `<label class="btn sm${docs.length ? '' : ' primary'}" for="docAdd">${ICON_PLAN} ${__h('Add a plan')}<input id="docAdd" class="vh" type="file" accept="application/pdf,.pdf,image/*" multiple data-docadd></label>` : ''}
+    ${typeof BATCH !== 'undefined' ? BATCH.listHtml(p) : ''}
+    <div class="row">${can && typeof docsBtn === 'function' ? docsBtn('docs') : ''}${can ? `<label class="btn sm${docs.length ? '' : ' primary'}" for="docAdd">${ICON_PLAN} ${__h('Add a plan')}<input id="docAdd" class="vh" type="file" accept="application/pdf,.pdf,image/*" multiple data-docadd></label>` : ''}
       ${docs.length && p.points.length ? `<button class="btn sm" data-act="pvPlace">${__h('Place points on the plan')}${noPin ? ` <span class="chip">${noPin}</span>` : ''}</button>` : ''}</div>
   </section>`;
 }

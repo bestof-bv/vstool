@@ -164,6 +164,8 @@ function renderHome() {
         <div class="row" style="justify-content:center"><button class="btn primary" data-act="newProject">${__h('+ New project')}</button><button class="btn" data-act="example">${__h('Open the example')}</button></div></div>`}
     ${list.length && !list.some(p => p.example) ? `<button class="btn ghost sm" data-act="example" style="justify-self:start">${__h('Open the example project')}</button>` : ''}
     <button class="btn ghost sm" data-act="importTpl" style="justify-self:start">${ICON.grid} ${__h('Excel template for a project import')}</button>
+    ${docsBtn('new', 'ghost')}
+    ${aiBtn('new', 'ghost')}
     <input type="file" id="importFile" class="vh" accept=".zip,.json,.xlsx,.xlsm,application/zip,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
   </main>`;
 }
@@ -374,12 +376,12 @@ function stepPoints(p) {
     <div class="group-hd"><h3>${__h('Units · Luchtgroepen')}</h3>${pk ? '' : `<span class="row" style="gap:6px">${p.systems.length > 1 ? `<button class="btn sm ghost" data-act="sysSort">${__h('Order by code')}</button>` : ''}<button class="btn sm" data-act="addSys">${__h('+ Unit')}</button></span>`}</div>
     ${sysCards || `<div style="padding:14px" class="small muted">${__h('First add an air handling unit with the design supply and extract flows — or load the points from Excel with the button below.')}</div>`}
   </section>
-  ${!p.systems.length ? `<div class="row"><button class="btn sm" data-act="importXlsx">${ICON.grid} ${__h('Import from Excel')}</button><button class="btn sm ghost" data-act="importTpl">${__h('Excel template')}</button><input type="file" id="importXlsxFile" class="vh" accept=".xlsx,.xlsm"></div>` : ''}
+  ${!p.systems.length ? `<div class="row"><button class="btn sm" data-act="importXlsx">${ICON.grid} ${__h('Import from Excel')}</button><button class="btn sm ghost" data-act="importTpl">${__h('Excel template')}</button><input type="file" id="importXlsxFile" class="vh" accept=".xlsx,.xlsm">${docsBtn('merge')}${aiBtn('merge')}</div>` : ''}
   ${p.systems.length ? `
   <div class="row"><h2 style="font-size:18px">${__h('Points')}</h2><span class="spacer"></span>
     ${!pk && Access.can('structure.edit') && S.f.order !== 'room' ? `<button class="btn sm${S.reorder ? ' primary' : ''}" data-act="reorder" aria-pressed="${S.reorder ? 'true' : 'false'}" title="${__h('Order of the points on a branch')}">↕ ${S.reorder ? __h('Done') : __h('Order')}</button>` : ''}
     ${(p.docs || []).length ? `<button class="btn sm" data-act="pvPlace" title="${__h('Place points on the plan')}">${ICON_PLAN} ${__h('On the plan')}</button>` : ''}<button class="btn sm" data-act="bulk">${__h('+ Series')}</button><button class="btn sm primary" data-act="addPt">${__h('+ Point')}</button></div>
-  ${pk ? '' : `<div class="row"><button class="btn sm" data-act="importXlsx">${ICON.grid} ${__h('Import from Excel')}</button><button class="btn sm ghost" data-act="importTpl">${__h('Excel template')}</button><span class="spacer"></span><button class="btn sm" data-act="pkNew">${__h('+ Package for a crew')}</button>
+  ${pk ? '' : `<div class="row"><button class="btn sm" data-act="importXlsx">${ICON.grid} ${__h('Import from Excel')}</button><button class="btn sm ghost" data-act="importTpl">${__h('Excel template')}</button>${docsBtn('merge')}${aiBtn('merge')}<span class="spacer"></span><button class="btn sm" data-act="pkNew">${__h('+ Package for a crew')}</button>
     <input type="file" id="importXlsxFile" class="vh" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>`}
   ${filtersHTML(p, false)}
   ${pts.length ? groupsHTML(p, pts, 'setup') : `<div class="empty"><span class="small">${__h('Add grilles, ducts and dampers. «Series» creates several points at once: T1.01, T1.02 …')}</span></div>`}` : ''}`;
@@ -826,6 +828,7 @@ function stepReport(p) {
     ${issues.length ? `<div class="stack-s">${issues.map(([t, m]) => `<div class="banner${t === 'nok' ? '' : ' info'}" style="${t === 'nok' ? 'background:var(--bad-soft);border-color:transparent' : ''}">${esc(m)}</div>`).join('')}</div>` : `<p class="small muted" style="margin:0">${__h('Measurements, dampers and project data are complete.')}</p>`}
   </section>
   ${scopeCardHTML(p)}
+  ${typeof AIR !== 'undefined' && !Demo.on() ? AIR.html(p) : ''}
   <section class="card"><div class="hd"><h2>${__h('Conclusions')}</h2><button class="btn sm" data-act="genConclusion">${__h('Write the conclusion')}</button></div>
     ${S.confirm === 'genConcl' ? `<div class="confirm"><span>${__h('The conclusion was edited by hand. Replace it with a new text from the data?')}</span><span class="spacer"></span><button class="btn sm danger" data-act="genConclusionYes">${__h('Replace')}</button><button class="btn sm" data-act="cancelConfirm">${__h('Cancel')}</button></div>` : ''}
     <p class="small muted" style="margin:0">${__h('Three paragraphs: methods and instruments · start-up and order of the works · result.')}</p>
@@ -988,6 +991,15 @@ function renderViewer() {
     </div></div></div>`;
   Access.decorate(viewerEl);
   hydratePhotos(viewerEl);
+}
+/** 0.9.29: several documents at once (plans, schemas, tables, photos, texts, DXF) */
+function docsBtn(mode, cls = '') {
+  return `<label class="btn sm ${cls}" for="batchFile-${mode}"${cls ? ' style="justify-self:start"' : ''}>📎 ${__h('Add documents')}<input id="batchFile-${mode}" class="vh" type="file" multiple data-batch="${mode}" accept=".pdf,.xlsx,.xlsm,.xls,.csv,.txt,.dxf,.dwg,image/*,application/pdf,text/plain,text/csv"></label>`;
+}
+/** 0.9.26: button + file input of the AI plan assistant (not in the demo edition) */
+function aiBtn(mode, cls = '') {
+  if (typeof AIP === 'undefined') return '';
+  return `<button class="btn sm ${cls}" data-act="aiPlan" data-mode="${mode}"${cls ? ' style="justify-self:start"' : ''}>✦ ${__h('Read a plan with AI')}</button><input type="file" id="aiPlanFile-${mode}" data-aifile="${mode}" class="vh" accept=".pdf,application/pdf">`;
 }
 function sheetFrame(title, body, foot) {
   return `<div class="sheet" role="dialog" aria-modal="true">
@@ -1443,6 +1455,9 @@ function dialogHTML(p, d) {
         : Store.mode === 'cloud' ? __('Projects are saved in your Claude cloud storage with a copy on the device. Photos go to the file storage of this page. Only you can see them.') : __('Cloud storage is not available in this window — projects and photos are saved on the device.')}</p></section>`,
       `<button class="btn primary" data-act="closeSheet">${__h('Done')}</button>`);
   }
+  if (d.type === 'aiplan') return AIP.html(d);
+  if (d.type === 'batch') return BATCH.html(d);
+  if (d.type === 'trace') return MMD.dlgHtml(d);
   if (d.type === 'import') {
     const x = d.d; const sysCodes = [...new Set([...x.systems.map(s => s.code), ...x.points.map(q => q.sysCode).filter(Boolean)])];
     const prev = x.points.slice(0, 8);
@@ -1671,6 +1686,17 @@ document.addEventListener('click', async (e) => {
     }
     case 'importTpl': { try { const b = await buildImportTemplate(); await offerFile('Inregelaar_importsjabloon.xlsx', b); } catch (err) { console.error(err); toast(__('Could not create the template')); } break; }
     case 'importXlsx': document.getElementById('importXlsxFile').click(); break;
+    case 'aiPlan': { const el = document.getElementById('aiPlanFile-' + (t.dataset.mode || 'new')); if (el) el.click(); break; }
+    case 'batchGo': BATCH.go(false); break;
+    case 'batchAi': BATCH.go(true); break;
+    case 'traceShow': S.dlg = { type: 'trace', i: Number(t.dataset.v) }; pushNav(); renderSheet(); break;
+    case 'traceDl': { const p = cur(); const tr = p && (p.traces || [])[Number(t.dataset.v)]; if (tr) offerFile(`routes_${(p.info.name || 'project').replace(/[^\w-]+/g, '_')}.mmd`, new Blob([tr.mermaid], { type: 'text/plain' }), p); break; }
+    case 'traceDel': { const p = cur(); if (p && p.traces) { p.traces.splice(Number(t.dataset.v), 1); touch(p); } closeSheet(); render(); break; }
+    case 'attDl': BATCH.download(cur(), t.dataset.v); break;
+    case 'attDel': BATCH.del(cur(), t.dataset.v); break;
+    case 'aiTreeApply': case 'aiTreeRedraw': case 'aiTreeNext': case 'aiTreeBack': AIP.act(act, t); break;
+    case 'airStart': case 'airDl': case 'airDel': case 'airAdd': case 'airRm': AIR.act(act, t); break;
+    case 'aiRole': case 'aiRun': case 'aiStop': case 'aiApply': case 'aiBack': case 'aiSize': case 'aiOnlyFlag': AIP.act(act, t); break;
     case 'impApply': {
       const d = S.dlg; if (!d || d.type !== 'import') break;
       if (d.mode === 'merge') { const n = IMP.apply(p, d.d, { withInfo: !!d.withInfo }); touch(p); closeSheet(); toast(`${__h('Points added:')} ${n}${impLinks(d.d)}`); }
@@ -1898,6 +1924,12 @@ function onField(e) {
   const el = e.target;
   { const perm = Access.fieldPerm(el); if (perm && !Access.can(perm)) { if (e.type === 'change') toast(Access.why(perm)); return; } }
   if (el.id === 'importFile' && e.type === 'change') return importFile(el);
+  if (el.dataset.batch !== undefined) { if (e.type !== 'change') return; const fl = el.files ? [...el.files] : []; el.value = ''; if (fl.length) BATCH.open(fl, el.dataset.batch); return; }
+  if (el.dataset.batchrole !== undefined) { const it = S.dlg && S.dlg.type === 'batch' && S.dlg.items[Number(el.dataset.batchrole)]; if (it) { it.role = el.value; if (e.type === 'change') renderSheet(); } return; }
+  if (el.dataset.aiinfo !== undefined) { if (typeof AIP !== 'undefined') AIP.infoEdit(el); return; }
+  if (el.id === 'airFile') { if (e.type !== 'change') return; const fl = el.files ? [...el.files] : []; el.value = ''; if (fl.length) AIR.addExtra(fl); return; }
+  if (el.dataset.aifile !== undefined) { if (e.type !== 'change') return; const f = el.files && el.files[0]; el.value = ''; if (f) AIP.open(f, el.dataset.aifile); return; }
+  if (el.dataset.aied !== undefined) { if (e.type === 'change') AIP.edit(el); return; }
   if (el.id === 'importXlsxFile' && e.type === 'change') { const f = el.files && el.files[0]; el.value = ''; if (f) importXlsx(f, 'merge'); return; }
   if (el.dataset.addphoto !== undefined) { if (e.type !== 'change') return; const files = [...(el.files || [])]; const owner = el.dataset.addphoto; el.value = ''; if (files.length) addPhotos(owner, files); return; }
   if (el.dataset.phcap !== undefined) { const p = cur(); const ph = p && allPhotos(p).find(x => x.id === el.dataset.phcap); if (ph) { ph.caption = el.value; touch(p); } return; }
