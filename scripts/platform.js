@@ -39,7 +39,7 @@ const Updater = {
     const me = await this.installed(); if (!me.code) return null;
     let j = null;
     // 0.9.21: signed in → the server (app-update: only with a valid plan, link signed for 30 minutes); else the public test address
-    if (typeof Auth !== 'undefined' && Auth.user()) { try { j = await Auth.call('/functions/v1/app-update', { body: {} }); } catch (e) { if (e.status === 403) { this.at = Date.now(); this.info = null; return null; } } }
+    if (typeof Auth !== 'undefined' && Auth.user()) { try { j = await Auth.call('/functions/v1/app-update', { body: { channel: typeof Beta !== 'undefined' ? Beta.channel() : 'stable' } }); } catch (e) { if (e.status === 403) { this.at = Date.now(); this.info = null; return null; } } }
     if (!j) { this.at = Date.now(); this.info = null; return null; } // 0.9.23: updates only for signed-in users (the old public address is closed)
     this.at = Date.now();
     this.info = j && Number(j.code) > me.code && j.apk ? j : null; return this.info;

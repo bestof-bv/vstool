@@ -134,7 +134,8 @@ function pkgReturnStep(p) {
       </div>
       ${todo.length ? `<div class="banner">${__h('Not measured and without status: {list}', { list: todo.slice(0, 16).map(x => x.code || '?').join(', ') + (todo.length > 16 ? ' …' : '') })}</div>` : `<div class="banner info">${__h('All points of the package are measured or have a status.')}</div>`}
       <label class="check" for="pk-photos"><input id="pk-photos" type="checkbox" data-pkphotos${S.pkPhotos !== false ? ' checked' : ''}><span>${__h('Include photos ({n})', { n: nph })}</span></label>
-      <div class="grid2"><button class="btn primary" data-act="pkReturn">${__h('Send results…')}</button><button class="btn" data-act="pkReturnSave">${__h('Save results file')}</button></div>
+      ${p.pkg.cloud ? `<button class="btn" data-act="syFull">${__h('Get the plans and shared photos')}</button><button class="btn primary" data-act="syHandIn">${__h('Hand in through the cloud')}</button>${p.pkg.cloudAt ? `<span class="small muted">${__h('Handed in: {d}', { d: fmtDate(p.pkg.cloudAt) })}</span>` : ''}` : ''}
+      <div class="grid2"><button class="btn${p.pkg.cloud ? '' : ' primary'}" data-act="pkReturn">${__h('Send results…')}</button><button class="btn" data-act="pkReturnSave">${__h('Save results file')}</button></div>
       <p class="small muted" style="margin:0">${__h('The coordinator imports the file into the project. You may keep measuring and send again — nothing is counted twice.')}${p.pkg.returnedAt ? ' ' + __h('Last sent: {d}.', { d: fmtDate(p.pkg.returnedAt) }) : ''}</p>
     </section>
     <section class="card"><div class="hd"><h2>${__h('This device')}</h2></div>
@@ -234,6 +235,7 @@ document.addEventListener('click', async (e) => {
       el.disabled = true;
       try {
         const r = await PKG.apply(m, d.res, d.d, d.choices); touch(m);
+        if (d.cloudRes && typeof SYNC !== 'undefined') { try { await SYNC.merged(d.cloudRes, m); } catch (er) { console.warn(er); } } // 0.10.0: a result from the cloud is merged
         S.dlg = null; closeSheetNow();
         if (S.pid !== m.id) openProject(m.id, 0); else render();
         toast(__('Merged: {u} updated, {a} new, {c} conflicts', { u: r.upd + r.theirs, a: r.added, c: r.conflicts }));

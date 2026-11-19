@@ -1,4 +1,10 @@
 /* ---------- boot ---------- */
+/* 0.10.1: the full version on the demo site brings its own stylesheet; the page still links the demo's (older) one */
+if (window.VST_FULL) try {
+  const l = document.querySelector('link[rel=stylesheet][href*="styles/app.css"]'); const want = 'full/' + window.VST_FULL + '/styles/app.css';
+  const f = JSON.parse(localStorage.getItem('vst.full.v1') || 'null');
+  if (l && f && (f.files || []).includes('styles/app.css') && !l.getAttribute('href').includes(want)) l.setAttribute('href', want);
+} catch (e) { }
 I18N.loadCustom();
 Settings.load(); useStyle();
 Access.load();

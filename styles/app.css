@@ -200,6 +200,7 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: .7; }
 .chip.ok { background: var(--ok-soft); color: var(--ok); }
 .chip.nok { background: var(--bad-soft); color: var(--bad); }
 .chip.acc { background: var(--accent-soft); color: var(--accent); }
+.chip.beta { background: var(--warn-soft, #fff3cd); color: var(--warn, #8a5a00); margin-left: 6px; font-size: 11px; letter-spacing: .04em; vertical-align: middle; } /* 0.9.34: sandbox */
 .chip.idx { background: var(--accent); color: var(--accent-fg); }
 
 /* filters */
@@ -808,6 +809,13 @@ body[data-layout="tabs"] { --sticky-top: calc(65px + env(safe-area-inset-top, 0p
   table.tbl.dmp td.dmp-lock input { width: 24px; height: 24px; }
   table.tbl.dmp td.dmp-lock { display: flex; flex-direction: row; align-items: center; gap: 8px; text-align: left; }
   table.tbl.dmp td.dmp-lock::before { content: attr(data-label); }
+  /* 0.9.40: «Position after» (a digit or two, a % or «open») and «Lock» side by side on one line, together 80 % of the width */
+  table.tbl.dmp tr { grid-template-columns: minmax(0, calc(80% - 76px)) 76px minmax(0, 1fr); }
+  table.tbl.dmp td.dmp-pt, table.tbl.dmp td.n { grid-column: 1 / -1; }
+  table.tbl.dmp td.dmp-pos[data-label] { grid-column: 1; }
+  table.tbl.dmp td.dmp-lock[data-label] { grid-column: 2; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  table.tbl.dmp td.dmp-lock[data-label] input { width: 26px; height: 26px; margin: 4px 0 0; }
+  table.tbl.dmp td.dmp-lock[data-label]:empty, table.tbl.dmp td.dmp-pos[data-label]:empty { display: none; }
 }
 
 /* seven steps on a phone: short labels, one line each */
@@ -930,3 +938,17 @@ body[data-dock="r"] .rail .rlw { display: none; }
 .mmd-zin { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 /* the app's own .label style must not reach the node labels of a Mermaid drawing */
 .mmd-svg .label, .mmd-zoom .label, .mmd-svg .nodeLabel, .mmd-zoom .nodeLabel { text-transform: none; letter-spacing: normal; font-family: Arial, Helvetica, sans-serif; font-weight: 400; color: #222; }
+
+/* 0.9.39: duct traverse schema — the drawing carries its own <style> (TRV_SVG_CSS in ui.js) */
+.travbox { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: flex-start; }
+.travbox > :first-child { flex: 0 1 300px; min-width: 220px; margin-inline: auto; }
+.travbox > :last-child { flex: 1 1 260px; min-width: 0; }
+.small.warn { color: var(--bad); }
+.trv-warn { display: grid; gap: 6px; margin: 4px 0; padding: 8px 10px; border-radius: 10px; background: var(--bad-soft); color: var(--bad); border-left: 4px solid var(--bad); font-size: .9em; font-weight: 600; line-height: 1.35; }
+/* 0.9.39: the docked point panel can be dragged wider / narrower at its left edge */
+.dock-grip { display: none; }
+body[data-dock="r"] .dock-grip { display: block; position: absolute; left: -9px; top: 0; bottom: 0; width: 18px; cursor: col-resize; touch-action: none; z-index: 2; }
+body[data-dock="r"] .dock-grip::after { content: ''; position: absolute; left: 6px; top: 50%; width: 6px; height: 56px; margin-top: -28px; border-radius: 3px; background: var(--line-strong); }
+body[data-dock="r"] .dock-grip:hover::after, body[data-dockdrag] .dock-grip::after { background: var(--sup); }
+body[data-dockdrag] { user-select: none; cursor: col-resize; }
+.banner.ann { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

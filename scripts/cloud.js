@@ -16,7 +16,7 @@ const FullApp = {
   /** download the files of the full version into the cache; returns the version */
   async install() {
     if (!('caches' in window) || !navigator.serviceWorker) throw new CloudError('no_cache');
-    const j = await Auth.call('/functions/v1/app-bundle', { body: {} });
+    const j = await Auth.call('/functions/v1/app-bundle', { body: { channel: Beta.channel() } });
     if (!j || !j.version || !Array.isArray(j.files) || !j.files.length) throw new CloudError('no_bundle');
     const c = await caches.open(this.CACHE); const base = new URL('full/' + j.version + '/', location.href).href;
     for (const f of j.files) {
@@ -40,13 +40,35 @@ const FullApp = {
   /** running the full version: a newer one on the server, or the plan ended → update or back to the demo */
   async check() {
     if (!this.running() || !navigator.onLine || !Auth.user()) return;
-    try { const j = await Auth.call('/functions/v1/app-bundle', { body: {} }); const i = this.info(); if (j && i && j.version !== i.version) { await this.install(); toast(__('The full version was updated: it is used at the next start')); } }
+    try { const j = await Auth.call('/functions/v1/app-bundle', { body: { channel: Beta.channel() } }); const i = this.info(); if (j && i && j.version !== i.version) { await this.install(); toast(__('The full version was updated: it is used at the next start')); } }
     catch (e) { if (e.status === 403) { await this.clear(); location.reload(); } }
   },
 };
 const cloudUrl = () => String(Settings.v.cloudUrl || CLOUD.url).replace(/\/+$/, '');
 /** the preview in the chat may not call other sites: sign-in works in the app (APK) and the PWA */
 const cloudOn = () => STANDALONE || !!Settings.v.cloudUrl;
+/** 0.9.34: the sandbox. A tester (on the server: private.testers) gets the beta channel: the AI functions «ai-plan-beta» /
+ *  «ai-review-beta» and the updates of the beta pointers (APK, full web version). He can switch it off for himself in the settings. */
+const Beta = {
+  LS: 'inregelaar.beta.v1',
+  get() { try { return JSON.parse(localStorage.getItem(this.LS) || 'null') || {}; } catch (e) { return {}; } },
+  put(v) { try { localStorage.setItem(this.LS, JSON.stringify(v)); } catch (e) { } },
+  mine() { const u = typeof Auth !== 'undefined' && Auth.user(); const v = this.get(); return !!(u && v.tester && v.user === u.id); },
+  tester() { return this.mine(); },
+  on() { return this.mine() && !this.get().off; },
+  channel() { return this.on() ? 'beta' : 'stable'; },
+  set(on) { const v = this.get(); v.off = !on; this.put(v); },
+  async refresh() {
+    const u = typeof Auth !== 'undefined' && Auth.user(); if (!u) return;
+    try { const j = await Auth.rpc('app_channel'); const v = this.get(); this.put({ user: u.id, tester: !!(j && j.tester), off: v.user === u.id ? !!v.off : false }); }
+    catch (e) { /* offline or an older server: keep what is known */ }
+  },
+  /** the path of an AI function for this user */
+  fn(path) { return this.on() ? String(path).replace(/^\/functions\/v1\/(ai-plan|ai-review)(?=$|[/?])/, '/functions/v1/$1-beta') : path; },
+};
+
+/** 0.11.0: the device token for a storage request (fetched first when there is none) */
+async function devHdr() { if (typeof Device === 'undefined' || !Auth.user()) return {}; try { await Device.ensure(); } catch (e) { } const t = Device.header(); return t ? { 'x-device-token': t } : {}; }
 class CloudError extends Error { constructor(code, msg, status) { super(msg || code); this.code = code; this.status = status; } }
 
 const Auth = {
@@ -55,8 +77,14 @@ const Auth = {
   save(t) { this.t = t; try { if (t) localStorage.setItem(this.LS, JSON.stringify(t)); else localStorage.removeItem(this.LS); } catch (e) { } if (!t && typeof Access !== 'undefined' && Access.s && Access.s.status === 'cloud') Access.clear(); },
   user() { return (this.t && this.t.user) || null; },
   async call(path, { method = 'POST', body, auth = true, prefer } = {}) {
+    path = Beta.fn(path); // 0.9.34: a tester's AI calls go to the sandbox
     const h = { apikey: CLOUD.key, 'Content-Type': 'application/json' };
     if (auth) { const tok = await this.token(); if (tok) h.Authorization = 'Bearer ' + tok; }
+    // 0.11.0: the token of this device (migration 0016); fetched first when there is none (not for the sign-in and the device calls themselves)
+    if (auth && h.Authorization && typeof Device !== 'undefined') {
+      if (!/^\/auth\//.test(path) && !/^\/functions\/v1\/device(?:$|\?)/.test(path)) { try { await Device.ensure(); } catch (e) { } }
+      const dt = Device.header(); if (dt) h['x-device-token'] = dt;
+    }
     if (prefer) h.Prefer = prefer;
     let r;
     try { r = await fetch(cloudUrl() + path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) }); }
@@ -64,7 +92,9 @@ const Auth = {
     const txt = await r.text(); let j = null; try { j = txt ? JSON.parse(txt) : null; } catch (e) { }
     if (!r.ok) {
       const code = (j && (j.error_code || (j.code === 'P0001' ? j.message : j.code) || j.error)) || 'http_' + r.status;
-      throw new CloudError(String(code), (j && (j.msg || j.message || j.error_description)) || '', r.status);
+      // 0.11.0: refused while this device sent a token: maybe it was disconnected elsewhere — check in again at the next request
+      if (r.status === 403 && h['x-device-token'] && typeof Device !== 'undefined' && Device.s) { Device.s.exp = 0; Device.save(Device.s); }
+      const err = new CloudError(String(code), (j && (j.msg || j.message || j.error_description)) || '', r.status); err.data = j; throw err;
     }
     return j;
   },
@@ -113,6 +143,23 @@ const Auth = {
     try { if (this.t) await this.call('/auth/v1/logout', { body: {} }); } catch (e) { } this.save(null);
   },
   rpc(fn, args = {}) { return this.call('/rest/v1/rpc/' + fn, { body: args }); },
+  /** 0.9.37: a file into / out of a private bucket of Supabase Storage (AI jobs) */
+  async upload(bucket, path, blob, type) {
+    for (let k = 0; ; k++) {
+      let r; try { r = await fetch(`${cloudUrl()}/storage/v1/object/${bucket}/${path}`, { method: 'POST', headers: Object.assign({ apikey: CLOUD.key, Authorization: 'Bearer ' + await this.token(), 'Content-Type': type || blob.type || 'application/octet-stream', 'x-upsert': 'false' }, await devHdr()), body: blob }); }
+      catch (e) { if (k < 2) { await new Promise(res => setTimeout(res, 2000)); continue; } throw new CloudError('offline'); }
+      if (r.ok) return true;
+      const t = await r.text(); if (r.status === 409 || /exists/i.test(t)) return true; // a retry of an upload that arrived
+      if (r.status >= 500 && k < 2) { await new Promise(res => setTimeout(res, 2000)); continue; }
+      throw new CloudError('upload', t.slice(0, 200), r.status);
+    }
+  },
+  async download(bucket, path) {
+    let r; try { r = await fetch(`${cloudUrl()}/storage/v1/object/authenticated/${bucket}/${path}`, { headers: Object.assign({ apikey: CLOUD.key, Authorization: 'Bearer ' + await this.token() }, await devHdr()) }); }
+    catch (e) { throw new CloudError('offline'); }
+    if (!r.ok) throw new CloudError('download', '', r.status);
+    return r.blob();
+  },
 };
 
 /** a link from a Supabase e-mail (standard templates, before the code templates are active):
@@ -163,11 +210,11 @@ const Captcha = {
 };
 
 const Cloud = {
-  orgs: [], invites: [], members: [], sent: [], loaded: false,
+  orgs: [], invites: [], members: [], sent: [], devices: null, loaded: false,
   /** after sign-in and at start: organisations, invitations for me, session of the chosen organisation */
   async refresh() {
-    if (!Auth.user()) { this.orgs = []; this.invites = []; this.members = []; this.sent = []; Access.clear(); return; }
-    const [orgs, inv] = await Promise.all([Auth.rpc('my_orgs'), Auth.rpc('my_invites')]);
+    if (!Auth.user()) { this.orgs = []; this.invites = []; this.members = []; this.sent = []; Access.clear(); if (typeof Support !== 'undefined') Support.refresh(); return; }
+    const [orgs, inv] = await Promise.all([Auth.rpc('my_orgs'), Auth.rpc('my_invites'), Beta.refresh()]);
     this.orgs = orgs || []; this.invites = inv || []; this.loaded = true;
     const o = this.orgs.find(x => x.id === Settings.v.orgId) || this.orgs[0];
     if (!o) { this.members = []; this.sent = []; Access.clear(); loginFill({ status: 'cloud', user: Auth.user(), org: null }); return; }
@@ -180,6 +227,11 @@ const Cloud = {
       [this.members, this.sent] = await Promise.all([Auth.rpc('org_members', { o: o.id }),
         Auth.call(`/rest/v1/invites?org_id=eq.${encodeURIComponent(o.id)}&accepted_at=is.null&select=id,email,role,expires_at,code&order=created_at`, { method: 'GET' })]);
     } else { this.members = []; this.sent = []; }
+    // 0.11.0: the working devices of the account (an older server without them: none shown)
+    try { this.devices = await Device.list(); } catch (e) { this.devices = null; }
+    if (Device.mine() && Device.mine().state === 'limit' && typeof toast === 'function') toast(Device.mine().why === 'class' ? Device.classMsg(Device.mine().cls) : __('This device has no place on your account: disconnect another device under Account › Devices'));
+    // 0.12.0: support requests and announcements (an older server without them: nothing shown)
+    if (typeof Support !== 'undefined') { try { await Support.refresh(); } catch (e) { console.warn(e); } }
   },
   orgId() { const s = Access.s; return s && s.status === 'cloud' && s.org ? s.org.id : null; },
   async createOrg(name) { const id = await Auth.rpc('create_org', { org_name: name }); Settings.v.orgId = id; Settings.save(); await this.refresh(); },
@@ -193,6 +245,7 @@ const Cloud = {
   async invite(email, role) { await Auth.call('/rest/v1/invites', { body: { org_id: this.orgId(), email, role }, prefer: 'return=minimal' }); await this.refresh(); },
   async cancelInvite(id) { await Auth.call('/rest/v1/invites?id=eq.' + encodeURIComponent(id), { method: 'DELETE' }); await this.refresh(); },
   async removeMember(uid) { await Auth.call(`/rest/v1/members?org_id=eq.${encodeURIComponent(this.orgId())}&user_id=eq.${encodeURIComponent(uid)}`, { method: 'DELETE' }); await this.refresh(); },
+  // 0.11.1: signing out keeps the place of this device (it signs in again at once); a place is freed only by unbinding or 60 days unused
   async signOut(all) { await Auth.signOut(all); await this.refresh(); if (FullApp.running()) { await FullApp.clear(); location.reload(); } }, // full version of the demo site: back to the demo
 };
 /** after a sign-in: the company data from the company style (else the name of the organisation), the technician from the account (name, else the e-mail before the @).
@@ -220,6 +273,12 @@ function cloudMsg(e) {
   const c = (e && e.code) || '';
   const M = {
     offline: __('No connection with the server — check the internet connection'),
+    device_limit: __('This device has no place on your account: disconnect another device under Account › Devices'),
+    device_class: __('One computer, one tablet and one phone per account: disconnect the other device of this kind under Account › Devices'),
+    device: __('This device has no place on your account: disconnect another device under Account › Devices'),
+    swap_limit: __('You can unbind one device per 30 days. In the Business plan the owner or an administrator of the organisation can do it.'),
+    unbound: __('This device was unbound from this account: it can come back to it 60 days after the unbinding, or through support. With another account it works at once.'),
+    device_key: __('This browser cannot keep a device key (private window or an old browser): use another browser or the app'),
     invalid_credentials: __('E-mail or password is not correct'),
     email_not_confirmed: __('Confirm your e-mail address first: enter the code from the e-mail, or send it again'),
     otp_expired: __('The code is not correct or has expired: check it, or send a new one'),

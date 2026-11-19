@@ -1055,6 +1055,68 @@ async function buildPdf(p) {
       didParseCell: statusCell(14),
     });
     if (ducts.some(x => x.duct?.main)) para('* ' + _r('hoofdkanaal luchtgroep'), 6.4, MUTED);
+    // 0.9.39: the grid of every traverse planned over the section — schema (holes, points) and the reading per point before / after
+    const RULE = { ea: _r('gelijke oppervlakken — NBN EN 12599 / EN 16211'), ll: _r('log-lineair — ASHRAE 111'), lt: _r('log-Tchebycheff — ASHRAE 111 / ISO 3966') };
+    for (const pt of ducts) {
+      const g = TRV.on(pt) ? TRV.grid(pt) : null; if (!g) continue;
+      const c = g.cfg, d = pt.duct; const S1 = TRV.stats(p, pt, 'eerste', g), S2 = TRV.stats(p, pt, 'controle', g);
+      const side = 56; ensure(side + 22);
+      font(8.4, 'bold', NAVY); doc.text(t(`${pt.code} — ${_r('netmeting')} ${RULE[c.rule]}`), M, y + 3);
+      const meta = [_r('{n} punten: {h} openingen × {k}', { n: g.N, h: g.holes.length, k: g.N / g.holes.length }), 'Dh ' + nl(g.dh) + ' mm',
+        c.wall ? _r('wand + isolatie {w} mm (in de diepte)', { w: nl(c.wall) }) : '', isNum(d.up) ? _r('recht vóór {v} m', { v: nl(d.up, 2) }) : '', isNum(d.dn) ? _r('recht na {v} m', { v: nl(d.dn, 2) }) : '',
+        ...[['eerste', S1, _r('vóór')], ['controle', S2, _r('na')]].filter(x => isNum(x[1].mean)).map(([, st, l]) => `${l}: v ${nl(st.mean, 2)} m/s` + (isNum(st.cv) ? ` · CV ${nl(st.cv * 100)} %` : ''))].filter(Boolean).join(' · ');
+      font(6.8, 'normal', MUTED); doc.text(t(meta), M, y + 7);
+      const y0 = y + 10;
+      // 0.9.39: the velocity profile over the section — each point coloured by v / v avg. of its phase (before and after, when measured)
+      const PROF = [[0, 0.75, [33, 82, 150], 1], [0.75, 0.9, [140, 182, 222], 0], [0.9, 1.1, [214, 232, 222], 0], [1.1, 1.25, [242, 178, 120], 0], [1.25, 99, [190, 60, 40], 1]];
+      const phs = [['eerste', S1, _r('vóór')], ['controle', S2, _r('na')]].filter(x => x[1].n);
+      const scheme = (x0, st, label) => {
+        doc.setLineWidth(0.4); doc.setDrawColor(...LINE); doc.setFillColor(...LGREY);
+        let P, bot = y0 + side - 2;
+        if (c.shape === 'round') { const R = side / 2 - 6, cx = x0 + side / 2, cy = y0 + side / 2; doc.circle(cx, cy, R, 'FD');
+          for (const o of g.holes) { const ux = Math.cos(o.ang), uy = -Math.sin(o.ang); doc.setDrawColor(...NAVY); doc.setLineWidth(1.1); doc.line(cx + R * ux, cy + R * uy, cx + (R + 2.2) * ux, cy + (R + 2.2) * uy);
+            font(8, 'bold', NAVY); doc.text(o.id, cx + (R + 4.4) * ux, cy + (R + 4.4) * uy + 1.2, { align: 'center' }); }
+          P = (q) => [cx + (q.u - 0.5) * 2 * R, cy + (q.v - 0.5) * 2 * R];
+        } else { const top = c.side === 'w'; const sc = Math.min((side - 8) / d.w, (side - 8) / d.h); const w = d.w * sc, h = d.h * sc; const ox = x0 + 6 + (side - 8 - w) / 2, oy = y0 + 6;
+          doc.rect(ox, oy, w, h, 'FD'); bot = oy + h + 2;
+          for (const o of g.holes) { const x = ox + o.u * w, yy = oy + o.v * h; doc.setDrawColor(...NAVY); doc.setLineWidth(1.1);
+            if (top) { doc.line(x, oy, x, oy - 2.2); font(7.5, 'bold', NAVY); doc.text(o.id, x, oy - 3.2, { align: 'center' }); } else { doc.line(ox, yy, ox - 2.2, yy); font(7.5, 'bold', NAVY); doc.text(o.id, ox - 4.2, yy + 1, { align: 'center' }); } }
+          P = (q) => [ox + q.u * w, oy + q.v * h];
+        }
+        if (st) { const im = TRV.cloud(g, st, 200); if (im) { const [ax, ay] = P({ u: 0, v: 0 }), [bx, by] = P({ u: 1, v: 1 }); try { doc.addImage(im, 'PNG', ax, ay, bx - ax, by - ay); } catch (e) { }
+          doc.setDrawColor(...LINE); doc.setLineWidth(0.4); if (c.shape === 'round') doc.circle((ax + bx) / 2, (ay + by) / 2, (bx - ax) / 2, 'S'); else doc.rect(ax, ay, bx - ax, by - ay, 'S'); } }
+        const rr = g.N > 30 ? 1.1 : 1.35;
+        for (const q of g.pts) { const [x, yy] = P(q); const v = st ? st.v[q.i] : null; const k = isNum(v) && st.mean > 0 ? PROF.find(b => v / st.mean < b[1]) : null;
+          doc.setLineWidth(0.25); doc.setDrawColor(...NAVY); doc.setFillColor(...(k ? k[2] : [255, 255, 255])); doc.circle(x, yy, rr, 'FD');
+          font(rr > 1.4 ? 4.8 : 4, 'bold', k && k[3] ? [255, 255, 255] : NAVY); doc.text(String(q.n), x, yy + 0.6, { align: 'center' }); }
+        if (label) { font(6.6, 'bold', NAVY); doc.text(t(label), x0 + side / 2, bot + 3.5, { align: 'center' }); }
+        return bot + 3.5;
+      };
+      const nS = Math.max(1, phs.length);
+      let sb = y0;
+      if (phs.length) phs.forEach(([, st, l], k) => sb = scheme(M + k * (side + 3), st, `${l}: v ${nl(st.mean, 2)} m/s · min ${nl(Math.min(...st.v.filter(isNum)), 2)} · max ${nl(Math.max(...st.v.filter(isNum)), 2)}`));
+      else sb = scheme(M, null, '');
+      // legend of the profile
+      { let lx = M; const ly = sb + 2.5; font(6, 'normal', MUTED); doc.text(t(_r('Snelheidsprofiel: v / v gem.')), lx, ly + 1.8); lx += doc.getTextWidth(t(_r('Snelheidsprofiel: v / v gem.'))) + 2.5;
+        for (const [lo, hi, col] of PROF) { doc.setFillColor(...col); doc.setDrawColor(...NAVY); doc.setLineWidth(0.2); doc.circle(lx + 1.2, ly + 1.2, 1.2, 'FD');
+          const tx = lo === 0 ? '< ' + nl(hi * 100) + ' %' : hi > 9 ? '> ' + nl(lo * 100) + ' %' : nl(lo * 100) + '–' + nl(hi * 100) + ' %'; font(6, 'normal', MUTED); doc.text(t(tx), lx + 3.2, ly + 1.8); lx += doc.getTextWidth(t(tx)) + 6; } }
+      // the readings per point
+      const U = pt.method === 'pitot' ? 'pd Pa' : 'v m/s'; const raw = (ph, i) => { const v = pt.meas?.[ph]?.r?.[i]; return isNum(v) ? nl(v, pt.method === 'pitot' ? 1 : 2) : ''; };
+      const vv = (st, i) => isNum(st.v[i]) ? nl(st.v[i], 2) : '';
+      const PI = pt.method === 'pitot'; const half = Math.ceil(g.N / 2); const two = g.N > 14;
+      const row = (i) => { const q = g.pts[i]; return PI ? [TRV.name(q) + (q.moved ? ' *' : ''), nl(q.depth), raw('eerste', i), vv(S1, i), raw('controle', i), vv(S2, i)] : [TRV.name(q) + (q.moved ? ' *' : ''), nl(q.depth), raw('eerste', i), raw('controle', i)]; };
+      const h1 = PI ? [_r('Punt'), _r('Diepte mm'), _r('vóór') + ' ' + U, 'v m/s', _r('na') + ' ' + U, 'v m/s'] : [_r('Punt'), _r('Diepte mm'), _r('vóór') + ' ' + U, _r('na') + ' ' + U];
+      const body = []; for (let i = 0; i < (two ? half : g.N); i++) body.push(two ? row(i).concat(i + half < g.N ? row(i + half) : h1.map(() => '')) : row(i));
+      table({ startY: y0, margin: { left: M + nS * (side + 3) + 4, right: M }, head: [two ? h1.concat(h1) : h1], body,
+        styles: { font: FONT, fontSize: 6.6, cellPadding: { top: 0.6, bottom: 0.6, left: 1, right: 1 }, textColor: INK, lineColor: LINE, lineWidth: { bottom: 0.15 }, halign: 'right' },
+        headStyles: { fillColor: GREY, textColor: NAVY, fontStyle: 'bold', fontSize: 6.4, halign: 'right' }, columnStyles: { 0: { halign: 'left', fontStyle: 'bold' }, [h1.length]: { halign: 'left', fontStyle: 'bold' } } });
+      y = Math.max(y, sb + 8);
+      const notes = TRV.checks(p, pt, null, g).map(x => x.k === 'up' ? _r('Rechte lengte vóór de meetdoorsnede {v} m < 6 × Dh = {n} m.', { v: nl(x.v, 2), n: nl(x.need, 2) })
+        : x.k === 'dn' ? _r('Rechte lengte na de meetdoorsnede {v} m < 2 × Dh = {n} m.', { v: nl(x.v, 2), n: nl(x.need, 2) })
+          : _r('* Punt dichter dan {y} mm bij de wand: gemeten op {y} mm.', { y: nl(x.ymin) }));
+      for (const n of notes) para(n, 6.4, MUTED);
+      y += 3;
+    }
   }
   /* ---- kanaaldrukken: index van het systeem en drukverliezen (landscape) ---- */
   if (PGn.length) {

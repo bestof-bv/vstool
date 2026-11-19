@@ -69,6 +69,8 @@ function chk(bind, value, text, o = {}) {
 function seg(act, value, options, extra = '') {
   return `<div class="seg" role="group">${Object.entries(options).map(([k, v]) => `<button type="button" class="${String(k) === String(value) ? 'on' : ''}" data-act="${act}" data-v="${esc(k)}"${extra}>${esc(v)}</button>`).join('')}</div>`;
 }
+/** 0.9.34: the chip of the sandbox for a tester */
+function betaChip(force) { return typeof Beta !== 'undefined' && (force ? Beta.tester() : Beta.on()) ? `<span class="chip beta" title="${__h('Sandbox: the beta channel is on')}">BETA</span>` : ''; }
 function syncBadge() {
   const st = Store.state;
   const t = { local: STANDALONE ? __('on the device') : __('on this device only'), cloud: __('saved'), saving: __('saving…'), error: __('save error'), connecting: __('connecting…') }[st] || '';
@@ -139,13 +141,15 @@ function renderHome() {
   ];
   app.innerHTML = `
   <header class="top"><div class="wrap bar">
-    <div class="title"><h1>Ventilation Setup Tool <span class="ver" title="${__h('Version {v}', { v: APP_VERSION })} · ${esc(fmtDate(APP_BUILD, false))}">v${esc(APP_VERSION)}</span></h1><div class="sub">${__h('Ventilation commissioning · reports in Dutch and French')}</div></div>
+    <div class="title"><h1>Ventilation Setup Tool <span class="ver" title="${__h('Version {v}', { v: APP_VERSION })} · ${esc(fmtDate(APP_BUILD, false))}">v${esc(APP_VERSION)}</span>${betaChip()}</h1><div class="sub">${__h('Ventilation commissioning · reports in Dutch and French')}</div></div>
     ${syncBadge()}
     <button class="iconbtn" data-act="settings" aria-label="${__h('Settings')}">${ICON.gear}</button>
   </div></header>
   <div class="wrap langbar">${langSeg('uiLang', I18N.cur.ui, I18N.list('ui'))}</div>
   <main class="wrap stack">
     ${updateBannerHTML()}
+    ${typeof annBannerHTML === 'function' ? annBannerHTML() : ''}
+    ${typeof AIP !== 'undefined' ? AIP.jobsHtml() : ''}
     ${DEMO_ED ? `<div class="banner demo-banner"><span>${__x('<b>Demo</b>: {p} project and up to {n} points, reports are marked DEMO. Your data stays in this browser.', { p: DEMO_LIMITS.projects, n: DEMO_LIMITS.points })}${/Android/i.test(navigator.userAgent) ? ' ' + __h('The Android app comes with the full version.') : ''}</span>
       <span class="row" style="gap:8px"><button class="btn sm primary" data-act="fullSignIn">${__h('Sign in / register')}</button></span></div>`
     : Demo.on() ? `<div class="banner demo-banner"><span>${__x('<b>Demo</b>: {p} project and up to {n} points, reports are marked DEMO. Your data stays in this browser.', { p: DEMO_LIMITS.projects, n: DEMO_LIMITS.points })}</span>
@@ -155,6 +159,7 @@ function renderHome() {
       <p>${__h('Initial measurement, damper adjustment, control measurement and a finished inregelrapport. The flow is calculated on site: flow hood, anemometer, k-factor or Pitot tube traverse.')}</p>
     </section>
     <div class="flow">${flow.map(([n, t, d]) => `<div><b>${n}</b><span>${t}</span><em>${d}</em></div>`).join('')}</div>
+    ${syncHomeHTML()}
     <div class="row" style="margin-top:8px"><h2 style="font-size:20px">${__h('Projects')}</h2><span class="spacer"></span>
       <span class="row" style="gap:8px;flex-wrap:nowrap;margin-left:auto"><button class="btn sm" data-act="import">${__h('Import .zip / .json / .xlsx')}</button>
       ${list.length ? `<button class="btn sm primary" data-act="newProject">${__h('+ New')}</button>` : ''}</span></div>
@@ -249,7 +254,7 @@ function renderProject() {
       <div class="rail-hd"><button class="iconbtn" data-act="home" aria-label="${__h('To projects')}" title="${__h('To projects')}">${ICON.back}</button>
         <div class="rt"><b>${title}</b><span>${esc(p.info.nr || '')}</span></div></div>
       <ol class="rail-steps">${names.map((n, i) => `<li>${stepBtn(i, 'rs')}</li>`).join('')}</ol>
-      <div class="rail-ft">${syncBadge()}${(p.docs || []).length ? `<button class="btn sm" data-act="pvOpen" title="${__h('Floor plan')}">${ICON_PLAN}<span class="rl">${__h('Floor plan')}</span></button>` : ''}<button class="btn sm" data-act="settings" title="${__h('Settings')}">${ICON.gear}<span class="rl">${__h('Settings')}</span></button><span class="small muted rl" title="${__h('Version {v}', { v: APP_VERSION })}">v${esc(APP_VERSION)}</span></div>
+      <div class="rail-ft">${syncBadge()}${(p.docs || []).length ? `<button class="btn sm" data-act="pvOpen" title="${__h('Floor plan')}">${ICON_PLAN}<span class="rl">${__h('Floor plan')}</span></button>` : ''}<button class="btn sm" data-act="settings" title="${__h('Settings')}">${ICON.gear}<span class="rl">${__h('Settings')}</span></button><span class="small muted rl" title="${__h('Version {v}', { v: APP_VERSION })}">v${esc(APP_VERSION)}</span>${betaChip()}</div>
     </nav>`
     : `<header class="top"><div class="wrap"><div class="bar">
       <button class="iconbtn" data-act="home" aria-label="${__h('To projects')}">${ICON.back}</button>
@@ -263,6 +268,7 @@ function renderProject() {
     ${rail ? `<div class="pagehd"><span class="label">${__h('Step {n}', { n: String(S.step + 1).padStart(2, '0') })}</span><h1>${esc(names[S.step])}</h1></div>` : ''}
     ${p.example ? `<div class="banner">${__h('Example with fictitious data. Change anything — it is the easiest way to learn the workflow.')}</div>` : ''}
     ${isPkg(p) ? pkgBanner(p) : ''}
+    ${typeof AIP !== 'undefined' ? AIP.jobsHtml(p.id) : ''}
     ${body}
     ${PAGE_KEYS[S.step] ? pageNotes(p, PAGE_KEYS[S.step]) : ''}
     <div class="stepnav">
@@ -306,6 +312,7 @@ function stepProject(p) {
     <p class="small muted" style="margin:0">${__h('The tolerance applies to the control measurement: deviation from the design flow within ±%. The density converts dynamic pressure into velocity. The limit of the current unbalance (max |I − Iavg| / Iavg) comes from the documentation of the motor maker.')}</p>
   </section>
   ${plansCardHTML(p)}
+  ${syncCardHTML(p)}
   ${teamCardHTML(p)}
   ${coverCard(p)}
   ${insCardHTML(p)}`;
@@ -697,7 +704,7 @@ function groupCard(p, g, n) {
     const role = x === idx ? `<span class="chip idx">${__h('flow index')}</span>` : isNum(r) && minR !== Infinity ? `<span class="chip">${r > minR * 1.05 ? __('close') : __('ok')}</span>` : '';
     return `<tr><td class="dmp-pt"><span class="mono" style="font-weight:600">${isNode(x) ? '◆ ' : ''}${esc(x.code || '—')}</span><br><span class="small muted">${esc([hasReg(x) ? (x.reg.model || L.reg[x.reg.type]) : __('no damper'), kids ? `${__h('slaves')} ${kids}` : ''].filter(Boolean).join(' · '))}</span></td>
       <td class="n" data-label="${__h('Ratio 1')}">${fmtPct(r)}<br>${role}</td>
-      <td data-label="${__h('Position after')}">${hasReg(x) ? `<input id="${fid(x.id, 'posAfter')}" type="text" data-pt="${x.id}" data-f="reg.posAfter" value="${esc(x.reg.posAfter || '')}" placeholder="${__h('after')}"><span class="small muted">${__h('was:')} ${esc(x.reg.posBefore || '—')}${(() => { const e = ptCat(p, x); const r = e && (e.kPos || []).length ? catPreset(p, x, e) : null; return r && isNum(r.pos) ? ' · ' + __h('preset ≈ {a}', { a: fmt(r.pos, 1) }) : ''; })()}</span>` : ''}</td>
+      <td class="dmp-pos" data-label="${__h('Position after')}">${hasReg(x) ? `<input id="${fid(x.id, 'posAfter')}" type="text" data-pt="${x.id}" data-f="reg.posAfter" value="${esc(x.reg.posAfter || '')}" placeholder="${__h('after')}"><span class="small muted">${__h('was:')} ${esc(x.reg.posBefore || '—')}${(() => { const e = ptCat(p, x); const r = e && (e.kPos || []).length ? catPreset(p, x, e) : null; return r && isNum(r.pos) ? ' · ' + __h('preset ≈ {a}', { a: fmt(r.pos, 1) }) : ''; })()}</span>` : ''}</td>
       <td class="dmp-lock" data-label="${__h('Lock')}">${hasReg(x) ? `<input id="${fid(x.id, 'locked')}" type="checkbox" data-pt="${x.id}" data-f="reg.locked"${x.reg.locked ? ' checked' : ''} aria-label="${__h('Locked')}" style="width:22px;height:22px;accent-color:var(--accent)">` : ''}</td></tr>`;
   }).join('');
   const k = g.key;
@@ -752,6 +759,7 @@ function stepHandover(p) {
     <section class="card"><div class="hd"><h2>${done ? __h('Project handed over') : __h('Ready for the handover')}</h2><span class="chip ${technical && admin ? 'ok' : 'nok'}">${readiness.filter(x => x.ok).length + checkN}/6</span></div>
       ${done ? `<p class="small">${__h('Handed over to {name} on {date}', { name: ho.contact || '—', date: new Date(ho.completedAt).toLocaleDateString('nl-BE') })}</p>` : ''}
     </section>
+    ${syncHandoverHTML(p)}
     <section class="card"><div class="hd"><h3>${__h('Technical readiness')}</h3><span class="chip ${technical ? 'ok' : 'nok'}">${technical ? __h('Ready') : __h('Action needed')}</span></div>
       ${readiness.map(r => `<div class="small" style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)"><span><b>${esc(r.label)}</b><br><span class="muted">${esc(r.detail)}</span></span><span class="chip ${r.ok ? 'ok' : 'nok'}">${r.ok ? __h('In order') : __h('Open')}</span></div>`).join('')}
     </section>
@@ -986,6 +994,7 @@ function renderViewer() {
     <div class="vw-img"><img data-ph="${ph.id}" alt="${esc(ph.caption || __('Photo'))}"></div>
     <div class="vw-foot"><div class="wrap stack-s">
       <label class="field" for="ph-cap">${lbl(__('Caption'), 'bijschrift in het rapport')}<input id="ph-cap" type="text" data-phcap="${ph.id}" value="${esc(ph.caption || '')}" placeholder="Typeplaatje toestel"></label>
+      ${typeof SYNC !== 'undefined' && SYNC.shared(p) && SYNC.lead(p) ? `<label class="check"><input type="checkbox" data-phteam="${ph.id}"${ph.team ? ' checked' : ''}> ${__h('Share with the team (goes to the technicians with the full synchronisation)')}</label>` : ''}
       <div class="row">${i > 0 ? `<button class="btn sm" data-act="phPrev">${__h('← Prev.')}</button>` : ''}${i < list.length - 1 ? `<button class="btn sm" data-act="phNext">${__h('Next →')}</button>` : ''}<span class="spacer"></span>
         ${S.confirm === 'delPhoto' ? `<span class="small">${__h('Delete this photo?')}</span><button class="btn sm danger" data-act="delPhoto">${__h('Delete')}</button><button class="btn sm" data-act="cancelPhDel">${__h('Cancel')}</button>` : `<button class="btn sm danger" data-act="askDelPhoto">${__h('Delete')}</button>`}</div>
     </div></div></div>`;
@@ -1002,7 +1011,7 @@ function aiBtn(mode, cls = '') {
   return `<button class="btn sm ${cls}" data-act="aiPlan" data-mode="${mode}"${cls ? ' style="justify-self:start"' : ''}>✦ ${__h('Read a plan with AI')}</button><input type="file" id="aiPlanFile-${mode}" data-aifile="${mode}" class="vh" multiple accept=".pdf,application/pdf,image/*,.xlsx,.xlsm,.csv,.dxf,.txt,text/plain">`;
 }
 function sheetFrame(title, body, foot) {
-  return `<div class="sheet" role="dialog" aria-modal="true">
+  return `<div class="sheet" role="dialog" aria-modal="true"><div class="dock-grip" data-grip aria-hidden="true"></div>
     <div class="sh-top"><div class="wrap"><h2>${title}</h2><button class="iconbtn" data-act="closeSheet" aria-label="${__h('Close')}">${ICON.close}</button></div></div>
     <div class="sh-body" id="shBody"><div class="wrap stack">${body}</div></div>
     ${foot ? `<div class="sh-foot"><div class="wrap">${foot}</div></div>` : ''}
@@ -1012,6 +1021,9 @@ const RD_LABEL = { hood: ['Q', 'm³/h'], readout: ['Q', 'm³/h'], anemo: ['v', '
 const RD_DEFAULT = { hood: 1, readout: 1, kfactor: 1, anemo: 3, pitot: 6, traverse: 6 };
 function readingsHTML(p, pt, phase) {
   const rd = pt.meas?.[phase]?.r || [];
+  if (pt.duct && pt.duct.plan == null && TRV.on(pt)) { pt.duct.plan = true; stampPt(p, pt, 'fld'); } // 0.9.39: a new Pitot / traverse point keeps its grid once readings come (also in a crew package)
+  const g = TRV.on(pt) ? TRV.grid(pt) : null;
+  if (g) return travHTML(p, pt, phase, g);
   const extra = S.ed?.extra?.[phase] || 0;
   const n = Math.max(RD_DEFAULT[pt.method] || 1, rd.length) + extra;
   const [sym, unit] = RD_LABEL[pt.method] || ['x', ''];
@@ -1028,8 +1040,103 @@ function methodParams(p, pt) {
       ${sel({ pt: pt.id, f: 'kU' }, u, { m3h: __('Q in m³/h = k · √Δp'), ls: __('Q in l/s = k · √Δp') }, { label: __('Unit of k'), rr: true })}
       ${hasReg(pt) ? inp({ pt: pt.id, f: 'k2' }, isNum(pt.k2) ? +(pt.k2 / f).toPrecision(10) : pt.k2, { label: __('k after adjusting (new position)'), nl: 'k na', num: true, small: true, unit: un, ph: __('as before'), scale: f }) : ''}</div>
       <div class="small muted">${__h('Q = k · √Δp, k from the damper / grille catalogue (Iris: usually in l/s).')}${hasReg(pt) ? ' ' + __h('An iris or damper measured on its own taps has another k after adjusting: enter it for the control measurement, or link the technical sheet with k per position.') : ''}</div>`; }
-  if (pt.method === 'pitot' || pt.method === 'traverse') return ductFields(pt);
+  if (pt.method === 'pitot' || pt.method === 'traverse') return ductFields(pt) + travFields(p, pt);
   return '';
+}
+/* ---------- 0.9.39: duct traverse — the points over the section, planned before the holes are drilled (TRV in traverse.js) ---------- */
+const TRV_RULE = () => ({ round: { ea: __('Equal areas — EN 12599 / EN 16211'), ll: __('Log-linear — ASHRAE 111') }, rect: { ea: __('Equal areas — EN 12599 / EN 16211'), lt: __('Log-Tchebycheff — ASHRAE 111 / ISO 3966') } });
+function travFields(p, pt) {
+  const d = pt.duct || {}; const on = TRV.on(pt); const c = TRV.cfg(d); const g = on ? TRV.grid(pt) : null;
+  const opt = (a, f) => Object.fromEntries(a.map(n => [n, f(n)]));
+  let set = '';
+  if (on) {
+    set = `<div class="grid2">${sel({ pt: pt.id, f: 'duct.rule' }, c.rule, TRV_RULE()[c.shape], { label: __('Method of the grid'), rr: true, full: true })}`;
+    if (c.shape === 'round') set += sel({ pt: pt.id, f: 'duct.rings' }, c.rings, opt(TRV.ringsOf(c.rule), n => __('{n} per radius · {m} per diameter', { n, m: 2 * n })), { label: __('Points'), rr: true })
+      + sel({ pt: pt.id, f: 'duct.axes' }, c.axes, { 2: __('2 holes at 90°'), 3: __('3 holes at 60°') }, { label: __('Holes'), rr: true });
+    else set += sel({ pt: pt.id, f: 'duct.side' }, d.side || '', { '': __('in the long side'), w: __('in the side B (top)'), h: __('in the side H (left)') }, { label: __('Holes'), rr: true })
+      + sel({ pt: pt.id, f: 'duct.nx' }, TRV.linesOf(c.rule).includes(+d.nx) ? d.nx : '', Object.assign({ '': __('auto ({n})', { n: c.nx }) }, opt(TRV.linesOf(c.rule), n => String(n))), { label: __('Lines along B'), rr: true })
+      + sel({ pt: pt.id, f: 'duct.ny' }, TRV.linesOf(c.rule).includes(+d.ny) ? d.ny : '', Object.assign({ '': __('auto ({n})', { n: c.ny }) }, opt(TRV.linesOf(c.rule), n => String(n))), { label: __('Lines along H'), rr: true });
+    set += inp({ pt: pt.id, f: 'duct.wall' }, d.wall, { label: __('Wall + insulation'), num: true, small: true, unit: __('mm'), ph: '0' })
+      + inp({ pt: pt.id, f: 'duct.probe' }, d.probe, { label: __('Probe head Ø'), num: true, small: true, unit: __('mm'), ph: '8' })
+      + inp({ pt: pt.id, f: 'duct.ymin' }, d.ymin, { label: __('Min. distance to the wall'), num: true, small: true, unit: __('mm'), ph: fmt(c.yminAuto) })
+      + '<div></div>'
+      + inp({ pt: pt.id, f: 'duct.up' }, d.up, { label: __('Straight duct before'), num: true, small: true, unit: __('m') })
+      + inp({ pt: pt.id, f: 'duct.dn' }, d.dn, { label: __('Straight duct after'), num: true, small: true, unit: __('m') }) + '</div>'
+      + `<div class="small muted">${__h('Depth on the probe = distance from the inner wall + wall and insulation. Straight duct: at least 6 × Dh before and 2 × Dh after the section (EN 12599); shorter → more points or another section. Points closer to the wall than the minimum (13 mm, 25 mm above 610 mm, at least the probe head) are measured at the minimum.')}</div>`;
+  }
+  const sum = g ? __('{n} points: {h} holes × {k} · Dh {dh} mm', { n: g.N, h: g.holes.length, k: g.N / g.holes.length, dh: fmt(g.dh) }) : on ? __('Enter the duct dimensions') : __('off: free readings');
+  return `<details class="more" data-trvset${(on && !g) || S.trvOpen ? ' open' : ''}><summary>${__h('Points over the section')} <span class="small muted" style="font-weight:400">${esc(sum)}</span></summary><div class="inner stack-s">
+    ${chk({ pt: pt.id, f: 'duct.plan' }, on, __('Plan the points over the section (schema, depth per point)'), { rr: true })}${set}</div></details>`;
+}
+/** the schema of the section: holes A, B… on the wall where they are drilled, points numbered from that wall; measured ✓, next ringed */
+function travSvg(p, pt, phase, g, st) {
+  const c = g.cfg; const W = 280; let h = '', H;
+  const cls = (q) => 'tp' + (isNum(st.v[q.i]) ? (st.out.includes(q.i) ? ' bad' : ' done') : '') + (st.next === q.i ? ' nx' : '') + (q.moved ? ' mv' : '');
+  const dot = (q, x, y, r) => `<g class="${cls(q)}" data-act="travPt" data-i="${q.i}" data-phase="${phase}"><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}"/><text x="${x.toFixed(1)}" y="${(y + r * 0.42).toFixed(1)}">${q.n}</text></g>`;
+  const r = g.N > 30 ? 6.5 : 7.5;
+  if (c.shape === 'round') {
+    const R = 104, cx = W / 2, cy = 132; H = 264;
+    h += `<circle class="tsec" cx="${cx}" cy="${cy}" r="${R}"/>`;
+    { const im = TRV.cloud(g, st, 120); if (im) h += `<image href="${im}" x="${cx - R}" y="${cy - R}" width="${2 * R}" height="${2 * R}" preserveAspectRatio="none"/>`; }
+    for (const o of g.holes) { const ux = Math.cos(o.ang), uy = -Math.sin(o.ang);
+      h += `<line class="tax" x1="${cx + R * ux}" y1="${cy + R * uy}" x2="${cx - R * ux}" y2="${cy - R * uy}"/><line class="thole" x1="${cx + R * ux}" y1="${cy + R * uy}" x2="${cx + (R + 9) * ux}" y2="${cy + (R + 9) * uy}"/><text class="tlet" x="${cx + (R + 19) * ux}" y="${cy + (R + 19) * uy + 4.5}">${o.id}</text>`; }
+    for (const q of g.pts) h += dot(q, cx + (q.u - 0.5) * 2 * R, cy + (q.v - 0.5) * 2 * R, r);
+  } else {
+    const d = pt.duct; const top = c.side === 'w'; const mw = 230, mh = 190; const s = Math.min(mw / d.w, mh / d.h);
+    const w = d.w * s, hh = d.h * s, ox = (W - w) / 2 + (top ? 0 : 10), oy = top ? 30 : 14; H = oy + hh + 14;
+    h += `<rect class="tsec" x="${ox}" y="${oy}" width="${w}" height="${hh}"/>`;
+    { const im = TRV.cloud(g, st, 120); if (im) h += `<image href="${im}" x="${ox}" y="${oy}" width="${w}" height="${hh}" preserveAspectRatio="none"/>`; }
+    for (const o of g.holes) { const x = ox + o.u * w, y = oy + o.v * hh;
+      h += top ? `<line class="tax" x1="${x}" y1="${oy}" x2="${x}" y2="${oy + hh}"/><line class="thole" x1="${x}" y1="${oy}" x2="${x}" y2="${oy - 9}"/><text class="tlet" x="${x}" y="${oy - 14}">${o.id}</text>`
+        : `<line class="tax" x1="${ox}" y1="${y}" x2="${ox + w}" y2="${y}"/><line class="thole" x1="${ox}" y1="${y}" x2="${ox - 9}" y2="${y}"/><text class="tlet" x="${ox - 18}" y="${y + 4.5}">${o.id}</text>`; }
+    for (const q of g.pts) h += dot(q, ox + q.u * w, oy + q.v * hh, r);
+  }
+  return `<svg class="trav" viewBox="0 0 ${W} ${H}" role="img" aria-label="${__h('Points over the section')}"><style>${TRV_SVG_CSS}</style>${h}</svg>`;
+}
+/* the style of the drawing travels inside the SVG: it never depends on a stale or missing stylesheet (an iPhone showed black dots) */
+const TRV_SVG_CSS = `svg.trav{width:100%;max-width:300px;height:auto;display:block}
+svg.trav .tsec{fill:var(--surface-2,#E3ECE8);stroke:var(--line-strong,#9DB3AA);stroke-width:2}
+svg.trav .tax{stroke:var(--line-strong,#9DB3AA);stroke-width:1;stroke-dasharray:3 3;fill:none}
+svg.trav .thole{stroke:var(--heading,#0F3D3E);stroke-width:5}
+svg.trav .tlet{font-weight:700;font-size:14px;font-family:var(--font-display,sans-serif);fill:var(--heading,#0F3D3E);text-anchor:middle}
+svg.trav .tp{cursor:pointer}
+svg.trav .tp circle{fill:var(--surface,#fff);stroke:var(--muted,#4B5F60);stroke-width:1.2}
+svg.trav .tp text{font-weight:600;font-size:8px;font-family:var(--font-data,monospace);fill:var(--fg,#1C2B2C);text-anchor:middle;pointer-events:none}
+svg.trav .tp.done circle{stroke:var(--ok,#1B6B47);stroke-width:2}
+svg.trav .tp.bad circle{fill:var(--bad,#A8271F);stroke:var(--bad,#A8271F)}
+svg.trav .tp.bad text{fill:var(--bg,#fff)}
+svg.trav .tp.nx circle{stroke:var(--sup,#1D6E99);stroke-width:3}
+svg.trav .tp.mv circle{stroke-dasharray:2 1.5}`;
+const TRV_CHECK = {
+  up: (x) => __('Straight duct before the section {v} m < 6 × Dh = {n} m: the profile is disturbed — measure more points or choose another section', { v: fmt(x.v, 2), n: fmt(x.need, 2) }),
+  dn: (x) => __('Straight duct after the section {v} m < 2 × Dh = {n} m', { v: fmt(x.v, 2), n: fmt(x.need, 2) }),
+  moved: (x) => __('{n} points would be closer than {y} mm to the wall: measure them at {y} mm', { n: x.n, y: fmt(x.ymin) }),
+  slow: (x) => __('Pitot at v avg. {v} m/s: below about 5 m/s the dynamic pressure is only a few Pa — a hot-wire probe measures more accurately', { v: fmt(x.v, 2) }),
+  out: (x) => __('More than ±25 % from the mean: {pts} — measure again or check the section', { pts: x.pts.join(', ') }),
+  extra: (x) => __('{n} readings beyond the grid are left out of the mean', { n: x.n }),
+  changed: () => __('The grid was changed after these readings: they no longer belong to the points shown — clear them and measure again'),
+};
+function travInfo(p, pt, phase, g) {
+  const st = TRV.stats(p, pt, phase, g); const nx = st.next >= 0 ? g.pts[st.next] : null;
+  const line = [nx ? __('Next: {pt} — {d} mm on the probe', { pt: TRV.name(nx), d: fmt(nx.depth) }) : __('All {n} points measured', { n: st.N }),
+    isNum(st.mean) ? __('{n} of {N} · v avg. {v} m/s', { n: st.n, N: st.N, v: fmt(st.mean, 2) }) + (isNum(st.cv) ? ' · CV ' + fmtPct(st.cv) : '') : ''].filter(Boolean).join(' · ');
+  // 0.11.0: every check of the grid in red, in one framed block, so it is not missed on the site
+  const cks = TRV.checks(p, pt, phase, g);
+  const ck = cks.length ? `<div class="trv-warn" role="alert">${cks.map(x => `<div>⚠ ${esc(TRV_CHECK[x.k](x))}</div>`).join('')}</div>` : '';
+  // 0.9.39: clear the readings of this phase (after another number of points / another grid), with a confirmation
+  const nr = ((pt.meas?.[phase]?.r) || []).filter(isNum).length;
+  const clr = !nr ? '' : S.confirm === 'trvClear:' + phase
+    ? `<div class="confirm"><span>${__h('Clear all {n} readings of this measurement?', { n: nr })}</span><span class="spacer"></span><button class="btn sm danger" data-act="travClearGo" data-phase="${phase}">${__h('Clear')}</button><button class="btn sm" data-act="cancelConfirm">${__h('Cancel')}</button></div>`
+    : `<button class="btn sm ${TRV.changed(pt, phase, g) ? 'danger' : 'ghost'}" data-act="travClear" data-phase="${phase}" style="justify-self:start">${__h('Clear the readings')}</button>`;
+  return { svg: travSvg(p, pt, phase, g, st), html: `<div class="small"><b>${esc(line)}</b></div>${ck}${clr}` };
+}
+function travHTML(p, pt, phase, g) {
+  const rd = pt.meas?.[phase]?.r || []; const [sym, unit] = RD_LABEL[pt.method] || ['x', ''];
+  let h = '';
+  g.pts.forEach((q, i) => { h += `<div class="rd"><span data-live="tlab|${pt.id}|${i}">${esc(TRV.name(q))} · ${fmt(q.depth)} mm</span><input id="${fid(pt.id, phase, 'r', i)}" class="num" inputmode="decimal" autocomplete="off" enterkeyhint="${i < g.N - 1 ? 'next' : 'done'}" aria-label="${esc(TRV.name(q))} ${sym}, ${__h(unit)}" placeholder="${esc(sym)} ${__h(unit)}" data-rd data-num${pt.method === 'traverse' ? ' data-small' : ''} data-pt="${pt.id}" data-f="meas.${phase}.r.${i}" value="${esc(fmtIn(rd[i]))}"></div>`; });
+  const inf = travInfo(p, pt, phase, g);
+  return `<div class="travbox"><div data-live="trav|${pt.id}|${phase}">${inf.svg}</div><div data-live="travi|${pt.id}|${phase}" class="stack-s">${inf.html}</div></div>
+    <div class="readings">${h}</div>`;
 }
 function ductFields(pt) {
   const d = pt.duct || {};
@@ -1284,6 +1391,34 @@ function renderGate() {
 }
 /** the account form is on the first screen or in Settings */
 function acctPaint() { if (gateOn()) render(); else renderSheet(); }
+/** 0.11.0: the working devices of the account (at most «limit», each with its own key) */
+function devRowsHTML(list, busy, admin) {
+  return list.map(x => { const ask = S.confirm === 'devRevoke:' + x.id;
+    return `<div class="row small"><span>${x.class ? `<span class="chip">${esc(Device.CLS()[x.class] || x.class)}</span> ` : ''}${esc(x.label || __('Device'))}${x.platform ? ' · ' + esc(x.platform) : ''}${x.this ? ` · <b>${__h('this device')}</b>` : ''}
+      <span class="muted">· ${__h('last used {d}', { d: fmtDate(Date.parse(x.last_seen)) })}</span></span><span class="spacer"></span>
+    ${x.this ? '' : ask ? `<button class="btn sm danger" data-act="devRevokeGo" data-v="${esc(x.id)}"${busy}>${__h('Unbind')}</button><button class="btn sm" data-act="cancelConfirm">${__h('Cancel')}</button>`
+      : `<button class="btn sm" data-act="devRevoke" data-v="${esc(x.id)}"${busy}>${__h('Unbind')}</button>`}</div>
+    ${ask ? `<div class="small warn">${admin ? __h('The place is freed at once; the device can sign in again to this account.')
+      : __h('You can unbind one device per 30 days. This device can only come back to this account after 60 days or through support; with another account it works at once.')}</div>` : ''}`; }).join('');
+}
+/** 0.11.1: devices unbound by the user (less than 60 days ago): they cannot come back to this account yet */
+/** Business plan: the owner and administrators manage the devices of the members */
+const devAdmin = () => { const o = Access.cur(true); return o.plan === 'business' && ['owner', 'admin'].includes(o.role); };
+function devBlockedHTML(list, busy, admin) {
+  return (list || []).map(x => `<div class="row small muted"><span>${esc(x.label || __('Device'))}${x.platform ? ' · ' + esc(x.platform) : ''} · ${__h('unbound, back from {d}', { d: fmtDate(Date.parse(x.until)) })}</span><span class="spacer"></span>
+    ${admin ? `<button class="btn sm ghost" data-act="devAllow" data-v="${esc(x.id)}"${busy}>${__h('Allow back')}</button>` : ''}</div>`).join('');
+}
+function devicesHTML(busy) {
+  const d = Cloud.devices; if (!d || !Array.isArray(d.devices)) return '';
+  const m = Device.mine(); const lim = !!(m && m.state === 'limit'), unb = !!(m && m.state === 'unbound');
+  return `<div class="stack-s"><span class="label">${__h('Devices')} · ${d.devices.length} / ${d.limit}</span>
+    ${lim ? `<div class="small warn">${m.why === 'class' ? esc(Device.classMsg(m.cls)) : __h('This device has no place: the account is already used on {n} devices. Unbind one of them to work here.', { n: d.limit })}</div>` : ''}
+    ${unb ? `<div class="small warn">${__h('This device was unbound from this account: it can come back from {d}, or earlier through support. With another account it works at once.', { d: m.until ? fmtDate(Date.parse(m.until)) : '—' })}</div>` : ''}
+    ${devRowsHTML(d.devices, busy, false)}${devBlockedHTML(d.blocked, busy, false)}
+    ${!d.swaps_left && d.next_swap ? `<span class="small">${__h('Next unbinding possible from {d}', { d: fmtDate(Date.parse(d.next_swap)) })}</span>` : ''}
+    <span class="small muted">${__h('Each device is known by its own key. Signing out keeps its place. A place is freed when a device is not used for 60 days, or when you unbind it — once per 30 days; an unbound device comes back to this account only after 60 days or through support. In the Business plan the owner or an administrator can unbind and allow devices.')}</span>
+    <span class="small muted">${__h('Per account: one computer or laptop, one tablet and one phone. A free trial is given once per device.')}</span></div>`;
+}
 function accountCard() {
   const o = Access.cur(); const sim = Settings.v.sim || {}; const pl = PLANS[o.plan] || {};
   const stateTxt = o.state === 'expired' ? __('ended') : o.state === 'offline' ? __('not checked for {d} days', { d: OFFLINE_DAYS }) : '';
@@ -1310,13 +1445,15 @@ function accountCard() {
       ${orgs.length > 1 ? `<label class="field" for="ac-org">${lbl(__('Organisation'))}<select id="ac-org" data-acctorg>${orgs.map(x => `<option value="${x.id}"${x.id === Settings.v.orgId ? ' selected' : ''}>${esc(x.name)} · ${esc(L.role[x.role] || x.role)}</option>`).join('')}</select></label>` : ''}
       ${!orgs.length ? orgStepHTML(A) : inv ? `<div class="stack-s"><span class="label">${__h('Invitations for you')}</span>${inv}</div>` : ''}
       ${admin ? `<div class="stack-s"><span class="label">${__h('Users')}</span>
-        ${(Cloud.members || []).map(m => `<div class="row small"><span>${esc(m.email)} · ${esc(L.role[m.role] || m.role)}${m.active ? '' : ' · ' + __h('inactive')}</span><span class="spacer"></span>${m.user_id !== u.id && m.role !== 'owner' ? `<button class="btn sm danger" data-act="memRemove" data-v="${m.user_id}"${busy}>${__h('Remove')}</button>` : ''}</div>`).join('')}
+        ${(Cloud.members || []).map(m => `<div class="row small"><span>${esc(m.email)} · ${esc(L.role[m.role] || m.role)}${m.active ? '' : ' · ' + __h('inactive')}</span><span class="spacer"></span>${m.user_id !== u.id && devAdmin() ? `<button class="btn sm ghost" data-act="memDev" data-v="${m.user_id}"${busy}>${__h('Devices')}</button>` : ''}${m.user_id !== u.id && m.role !== 'owner' ? `<button class="btn sm danger" data-act="memRemove" data-v="${m.user_id}"${busy}>${__h('Remove')}</button>` : ''}</div>
+          ${A.memDev && A.memDev.uid === m.user_id && A.memDev.list ? (devRowsHTML(A.memDev.list.devices || [], busy, true) + devBlockedHTML(A.memDev.list.blocked, busy, true)) || `<span class="small muted">${__h('No devices')}</span>` : ''}`).join('')}
         ${(Cloud.sent || []).map(x => `<div class="row small"><span class="muted">${esc(x.email)} · ${esc(L.role[x.role] || x.role)} · ${__h('invited')}</span>${x.code ? `<b class="mono" title="${__h('Invitation code')}">${esc(invCodeFmt(x.code))}</b>` : ''}<span class="spacer"></span>
           ${x.code ? `<button class="btn sm" data-act="invShare" data-v="${esc(x.id)}"${busy}>${__h('Send the code')}</button>` : ''}<button class="btn sm ghost" data-act="invCancel" data-v="${esc(x.id)}"${busy}>${__h('Cancel')}</button></div>`).join('')}
         <div class="grid2"><label class="field" for="ac-ie">${lbl(__('Invite a colleague: e-mail'))}<input id="ac-ie" type="email" inputmode="email" data-acct="ie" value="${esc(A.ie)}" placeholder="collega@firma.be"></label>
           <label class="field" for="ac-ir">${lbl(__('Role'))}<select id="ac-ir" data-acct="ir">${roles.map(r => `<option value="${r}"${A.ir === r ? ' selected' : ''}>${esc(L.role[r])}</option>`).join('')}</select></label></div>
         <div class="row"><button class="btn" data-act="invSend"${busy}>${__h('Invite')}</button></div>
         <span class="small muted">${__h('The colleague creates an account with this e-mail address in the app; the invitation then appears under «Invitations for you». Send the colleague the invitation code: it is needed to accept.')}</span></div>` : ''}
+      ${devicesHTML(busy)}
       <details class="stack-s" data-acctdet${A.pwOpen ? ' open' : ''}><summary class="small">${__h('Password and devices')}</summary>
         <label class="field" for="ac-np">${lbl(__('New password'))}<input id="ac-np" type="password" autocomplete="new-password" data-acct="np" value="${esc(A.np)}" placeholder="${esc(__('at least {n} characters, letters and digits', { n: PASS_MIN }))}"></label>
         <div class="row"><button class="btn sm" data-act="acctPass"${busy}>${__h('Change the password')}</button><span class="spacer"></span><button class="btn sm danger" data-act="acctOutAll"${busy}>${__h('Sign out on all devices')}</button></div>
@@ -1377,8 +1514,11 @@ function dialogHTML(p, d) {
       <section class="card"><div class="hd"><h3>${__h('Note and photos')}</h3><span class="small muted">${__h('nameplate, controller display')}</span></div>
         ${inp({ sys: s.id, f: 'note' }, s.note, { label: __('Note'), nl: 'Opmerking', area: true })}
         ${photosHTML(p, 'sys:' + s.id)}</section>
-      ${S.confirm === 'delSys' ? `<div class="confirm"><span>${__h('Delete the unit and all its points?')}</span><span class="spacer"></span><button class="btn sm danger" data-act="delSys">${__h('Delete')}</button><button class="btn sm" data-act="cancelConfirm">${__h('Cancel')}</button></div>` : ''}`,
-      `<button class="btn danger" data-act="askDelSys">${__h('Delete')}</button><button class="btn primary" data-act="closeSheet">${__h('Done')}</button>`);
+      ${S.confirm === 'delSys' ? `<div class="banner">${__h('Delete the unit and all its points?')}${p.points.some(x => x.systemId === s.id) ? ' ' + __h('{n} points', { n: p.points.filter(x => x.systemId === s.id).length }) : ''}</div>` : ''}`,
+      // 0.9.39: the question sits in the footer, next to the button: at the end of a long sheet it was off the screen («Delete» did nothing)
+      S.confirm === 'delSys'
+        ? `<button class="btn danger" data-act="delSys">${__h('Delete unit')}</button><button class="btn" data-act="cancelConfirm">${__h('Cancel')}</button>`
+        : `<button class="btn danger" data-act="askDelSys">${__h('Delete')}</button><button class="btn primary" data-act="closeSheet">${__h('Done')}</button>`);
   }
   if (d.type === 'bulk') {
     const b = d.v;
@@ -1411,6 +1551,7 @@ function dialogHTML(p, d) {
     const sf = (k, label, nlT, ph, area) => `<label class="field" for="set-${k}">${lbl(label, nlT)}${area ? `<textarea id="set-${k}" data-set="${k}" placeholder="${esc(ph || '')}" style="min-height:64px">${esc(v[k] || '')}</textarea>` : `<input id="set-${k}" type="text" data-set="${k}" value="${esc(v[k] || '')}" placeholder="${esc(ph || '')}">`}</label>`;
     return sheetFrame(__('Settings'), `
       ${accountCard()}
+      ${typeof supportCard === 'function' ? supportCard() : ''}
       <section class="card"><h3>${__h('On this device')}</h3><p class="small muted" style="margin:0" data-devmem>${__h('Checking the memory…')}</p></section>
       <section class="card"><h3>${__h('Company in the reports')}</h3><p class="small muted" style="margin:0">${__h('Header, cover and footer of PDF and Excel. Used for new projects.')}</p>
         ${styleBlockHTML()}
@@ -1426,6 +1567,10 @@ function dialogHTML(p, d) {
             ${v.logoSrc !== 'default' ? `<button class="btn sm ghost" data-act="logoDefault">${__h('Standard')}</button>` : ''}${v.logoSrc !== 'none' ? `<button class="btn sm ghost" data-act="logoNone">${__h('No logo')}</button>` : ''}</div>
           <span class="small muted">${__h('PNG, JPEG, WebP or SVG. A transparent background is kept.')}</span>`; })()}</div>
       </section>
+      ${typeof Beta !== 'undefined' && Beta.tester() ? `<section class="card"><h3>${__h('Sandbox (beta)')}</h3>
+        <label class="row"><input type="checkbox" data-beta${Beta.on() ? ' checked' : ''}><span class="grow">${__h('Use the beta channel')}</span>${betaChip(true)}</label>
+        <span class="small muted">${__h('As a tester you get new versions first: the AI assistant and the expert check of the sandbox, and the beta updates of the app. Switch it off to work with the stable version.')}</span>
+        <div class="row"><button class="btn sm" data-act="aiCosts">${__h('AI calls and their cost')}</button><button class="btn sm" data-act="aiLessons">${__h('What the AI learned')}</button><button class="btn sm" data-act="aiEvalList">${__h('Control set of the AI')}</button></div></section>` : ''}
       ${Platform.native() ? `<section class="card"><h3>${__h('App version')}</h3>
         <div class="row small"><span>${__h('Installed: {v}', { v: (Updater.mine && Updater.mine.version) || APP_VERSION })}${Updater.mine && Updater.mine.code ? ' · ' + __h('build {n}', { n: Updater.mine.code }) : ''}</span><span class="spacer"></span>
           ${Updater.info ? `<button class="btn sm primary" data-act="appUpdate">${__h('Update to {v}', { v: Updater.info.version })}</button>` : ''}<button class="btn sm" data-act="appCheck">${__h('Check for updates')}</button></div>
@@ -1458,6 +1603,9 @@ function dialogHTML(p, d) {
   if (d.type === 'aiplan') return AIP.html(d);
   if (d.type === 'batch') return BATCH.html(d);
   if (d.type === 'aidocs') return BATCH.aiPickHtml(d);
+  if (d.type === 'aicost') return AIP.costsHtml(d);
+  if (d.type === 'ailessons') return AIP.lessonsHtml(d);
+  if (d.type === 'aievals') return AIP.evalListHtml(d);
   if (d.type === 'trace') return MMD.dlgHtml(d);
   if (d.type === 'import') {
     const x = d.d; const sysCodes = [...new Set([...x.systems.map(s => s.code), ...x.points.map(q => q.sysCode).filter(Boolean)])];
@@ -1533,6 +1681,10 @@ function updateLiveCells(p) {
       const kdi = kidsDesignInfo(p, pt), kd = kdi.v; let sq = 0, n = 0; for (const kx of kids) { const v = ptQ(p, kx, b); if (isNum(v)) { sq += v; n++; } }
       const mism = isNum(pt.designQ) && isNum(kd) && Math.abs(kd - pt.designQ) / pt.designQ > 0.02;
       el.innerHTML = __x('Slaves {n}: {list}', { n: kids.length, list: esc(kids.map(x => x.code).join(', ')) }) + '<br>' + __x('Σ design <b class="mono">{d}</b>{own} · Σ measured <b class="mono">{q}</b> ({k} of {n})', { d: isNum(kd) ? fmt(kd) : kdi.partial != null ? '? (' + __h('{k} of {n} without design flow', { k: kdi.m - kdi.n, n: kdi.m }) + ')' : '—', own: isNum(pt.designQ) ? ' ' + __h('(node {v})', { v: fmt(pt.designQ) }) : '', q: n ? fmt(sq) : '—', k: n, n: kids.length }) + (mism ? `<br><span class="warn-t">${__h('Σ of the slave design flows differs from the node design flow')}</span>` : '');
+    } else if (k === 'trav' || k === 'travi' || k === 'tlab') {
+      const pt = ptAt(p, a); const g = pt && TRV.on(pt) ? TRV.grid(pt) : null; if (!g) return;
+      if (k === 'tlab') { const q = g.pts[+b]; if (q) el.textContent = `${TRV.name(q)} · ${fmt(q.depth)} mm`; return; }
+      const inf = travInfo(p, pt, b, g); if (k === 'trav') el.innerHTML = inf.svg; else el.innerHTML = inf.html;
     } else if (k === 'area') {
       const pt = ptAt(p, a); const A = pt ? ductArea(pt) : null;
       el.textContent = A ? `${__h('Cross-section')} ${fmt(A, 4)} ${__h('m²')}` : __('Enter the duct dimensions');
@@ -1547,7 +1699,7 @@ function updateLiveCells(p) {
     } else if (k === 'sysbal') {
       el.innerHTML = sysBalLive(p, a, b);
     } else if (k === 'sdev') {
-      const s = sysOf(p, a); const q = systemQ(p, s, b, 'controle') ?? mainDuctQ(p, a, b, 'controle'); const d = devOf(q, s.design[b]);
+      const s = sysOf(p, a); if (!s) return; const q = systemQ(p, s, b, 'controle') ?? mainDuctQ(p, a, b, 'controle'); const d = devOf(q, s.design[b]);
       if (!isNum(d)) { el.className = 'chip'; el.textContent = __('{d}: no data', { d: b }); return; }
       const ok = inTol(d, p.tol.system); el.className = 'chip ' + (ok ? 'ok' : 'nok'); el.textContent = `${b} ${fmtDev(d)} ${ok ? 'OK' : 'NOK'}`;
     } else if (k === 'sysdes') {
@@ -1587,6 +1739,7 @@ function openProject(id, step) {
   const pp = Store.projects[id]; if (pp) I18N.set('rep', pp.report.lang || Settings.v.repLang || 'nl');
   S.pid = id; S.view = 'project'; S.step = step ?? S.step ?? 0; S.f = { sys: 'all', dir: 'all', zone: 'all', room: 'all', order: S.f?.order || 'branch', todo: false }; S.confirm = null; S.adj = {}; S.fan = {};
   pushNav(); render(); window.scrollTo(0, 0); wakeFor();
+  if (pp && typeof SYNC !== 'undefined' && SYNC.shared(pp)) SYNC.sync(pp); // 0.10.0: the changes of the team (0.10.1: and the plan files)
 }
 const LAST_STEP = stepNames().length - 1;
 function nearStep(p, i, dir) { i = Math.max(0, Math.min(LAST_STEP, i)); let j = i; while (j >= 0 && j <= LAST_STEP && !stepAllowed(p, j)) j += dir; if (j < 0 || j > LAST_STEP) { j = i; while (j >= 0 && j <= LAST_STEP && !stepAllowed(p, j)) j -= dir; } return Math.max(0, Math.min(LAST_STEP, j)); }
@@ -1673,6 +1826,7 @@ document.addEventListener('click', async (e) => {
     if (['addPt', 'addDevice', 'addChild', 'dupPt'].includes(act) && !Access.demoRoom('point', p)) return;
     if (act === 'bulkCreate' && p && S.dlg && p.points.length + bulkCodes(S.dlg.v).length > DEMO_LIMITS.points) { Access.demoRoom('point', { points: { length: DEMO_LIMITS.points } }); return; }
   }
+  if (typeof supAction === 'function' && supAction(act, t)) return; // 0.12.0: help and support, announcements
   switch (act) {
     case 'viewPhoto': S.pv = { owner: t.dataset.owner, id: t.dataset.id }; S.confirm = null; pushNav(); renderViewer(); break;
     case 'closeViewer': if (STANDALONE && history.state && history.state.inregelaar) history.back(); else { S.pv = null; S.confirm = null; renderViewer(); refreshOwner(); } break;
@@ -1692,6 +1846,12 @@ document.addEventListener('click', async (e) => {
     case 'batchAi': BATCH.go(true); break;
     case 'aiDocs': { const p = cur(); if (p) BATCH.aiPick(p); break; }
     case 'aiDocsGo': BATCH.aiPickGo(); break;
+    case 'aiCosts': AIP.costs(); break;
+    case 'aiLessons': AIP.lessons(); break;
+    case 'aiJobOpen': case 'aiJobCancel': case 'aiJobHide': if (S.dlg && S.dlg.type === 'aiplan' && act === 'aiJobOpen') { S.dlg = null; closeSheetNow(); } AIP.jobAct(act, t); break;
+    case 'aiEvalList': S.dlg = { type: 'aievals' }; pushNav(); renderSheet(); break;
+    case 'aiEvalRun': { const p = Store.projects[t.dataset.v]; if (!p) break; S.dlg = null; closeSheetNow(); openProject(p.id, S.step ?? 1); setTimeout(() => BATCH.aiPick(p), 150); break; }
+    case 'aiDocsEval': BATCH.aiPickGo('eval'); break;
     case 'traceShow': S.dlg = { type: 'trace', i: Number(t.dataset.v) }; pushNav(); renderSheet(); break;
     case 'traceDl': { const p = cur(); const tr = p && (p.traces || [])[Number(t.dataset.v)]; if (tr) offerFile(`routes_${(p.info.name || 'project').replace(/[^\w-]+/g, '_')}.mmd`, new Blob([tr.mermaid], { type: 'text/plain' }), p); break; }
     case 'traceDel': { const p = cur(); if (p && p.traces) { p.traces.splice(Number(t.dataset.v), 1); touch(p); } closeSheet(); render(); break; }
@@ -1699,7 +1859,7 @@ document.addEventListener('click', async (e) => {
     case 'attDel': BATCH.del(cur(), t.dataset.v); break;
     case 'aiTreeApply': case 'aiTreeRedraw': case 'aiTreeNext': case 'aiTreeBack': AIP.act(act, t); break;
     case 'airStart': case 'airDl': case 'airDel': case 'airAdd': case 'airRm': AIR.act(act, t); break;
-    case 'aiRole': case 'aiRun': case 'aiStop': case 'aiApply': case 'aiBack': case 'aiSize': case 'aiOnlyFlag': AIP.act(act, t); break;
+    case 'aiRole': case 'aiRun': case 'aiJob': case 'aiStop': case 'aiApply': case 'aiEval': case 'aiBack': case 'aiSize': case 'aiOnlyFlag': AIP.act(act, t); break;
     case 'impApply': {
       const d = S.dlg; if (!d || d.type !== 'import') break;
       if (d.mode === 'merge') { const n = IMP.apply(p, d.d, { withInfo: !!d.withInfo }); touch(p); closeSheet(); toast(`${__h('Points added:')} ${n}${impLinks(d.d)}`); }
@@ -1777,6 +1937,12 @@ document.addEventListener('click', async (e) => {
         return x && x.code ? __('Invitation saved. Code for {email}: {code} — send it with «Send the code».', { email: em, code: invCodeFmt(x.code) }) : __('Invitation saved'); }); break; }
     case 'invShare': { const x = (Cloud.sent || []).find(i => i.id === t.dataset.v); if (!x) break; shareText(invShareText(x), __('Invitation')); break; }
     case 'invCancel': acctRun(() => Cloud.cancelInvite(t.dataset.v), __('Invitation withdrawn')); break;
+    case 'devRevoke': S.confirm = 'devRevoke:' + t.dataset.v; acctPaint(); break;
+    case 'devRevokeGo': { const id = t.dataset.v, A = acctState(); acctRun(async () => { await Device.revoke(id); S.confirm = null;
+      if (A.memDev) A.memDev.list = await Device.list(A.memDev.uid); try { Cloud.devices = await Device.list(); } catch (e) { } }, __('Device unbound')); break; }
+    case 'devAllow': { const id = t.dataset.v, A = acctState(); acctRun(async () => { await Device.allow(id); if (A.memDev) A.memDev.list = await Device.list(A.memDev.uid); }, __('The device may come back')); break; }
+    case 'memDev': { const uid = t.dataset.v, A = acctState(); if (A.memDev && A.memDev.uid === uid) { A.memDev = null; acctPaint(); break; }
+      acctRun(async () => { A.memDev = { uid, list: await Device.list(uid) }; }, ''); break; }
     case 'memRemove': acctRun(() => Cloud.removeMember(t.dataset.v), __('User removed')); break;
     case 'simRole': case 'simPlan': { const sm = Object.assign({ on: true, role: 'owner', plan: 'business' }, Settings.v.sim || {}); sm[act === 'simRole' ? 'role' : 'plan'] = t.dataset.v; Settings.v.sim = sm; Settings.save(); render(); break; }
     case 'repLang': if (p) { p.report.lang = t.dataset.v; I18N.set('rep', t.dataset.v); touch(p); render(); } break;
@@ -1795,7 +1961,8 @@ document.addEventListener('click', async (e) => {
     case 'styleFirmYes': { const f = S.styleFirm || {}; for (const k of ['company', 'address', 'footer']) if (f[k]) Settings.v[k] = f[k]; Settings.save(); S.confirm = null; S.styleFirm = null; renderSheet(); toast(__('Company details filled in')); break; }
     case 'styleExport': { try { const o = styleFile(); const slug = String(o.name || 'stijl').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'stijl'; await offerFile(`${slug}.inregelstijl.json`, new Blob([JSON.stringify(o, null, 1)], { type: 'application/json' })); } catch (err) { console.error(err); toast(__('Could not create the file')); } break; }
     case 'logoNone': Settings.v.logoSrc = 'none'; Settings.save(); renderSheet(); break;
-    case 'home': S.view = 'home'; S.pid = null; S.confirm = null; I18N.set('rep', Settings.v.repLang || 'nl'); render(); window.scrollTo(0, 0); wakeFor(); break;
+    case 'home': { const lp = cur(); if (lp && typeof SYNC !== 'undefined' && SYNC.timers[lp.id]) SYNC.schedule(lp, 0); } // 0.10.1: closing a shared project: its changes go up
+      S.view = 'home'; S.pid = null; S.confirm = null; I18N.set('rep', Settings.v.repLang || 'nl'); render(); window.scrollTo(0, 0); wakeFor(); break;
     case 'newProject': { const np = newProject(); Store.projects[np.id] = np; touch(np); openProject(np.id, 0); break; }
     case 'example': { const ex = exampleProject(); Store.projects[ex.id] = ex; touch(ex); await addExamplePlan(ex); openProject(ex.id, 2); toast(__('Example opened at step «Measure 1»')); break; }
     case 'open': openProject(t.dataset.id, 0); break;
@@ -1804,7 +1971,8 @@ document.addEventListener('click', async (e) => {
     case 'step': goStep(Number(t.dataset.v)); break;
     case 'vtMore': { S.vtMore = S.vtMore || {}; const k = t.dataset.k; S.vtMore[k] = !S.vtMore[k]; renderKeepAll(); break; }
     case 'prev': goStep(S.step - 1); break;
-    case 'handoverDone': { const p = cur(); if (p) { p.handover = { ...(p.handover || {}), completedAt: t.dataset.v === 'done' ? new Date().toISOString() : null }; touch(p); render(); } break; }
+    case 'handoverDone': { const p = cur(); if (p) { p.handover = { ...(p.handover || {}), completedAt: t.dataset.v === 'done' ? new Date().toISOString() : null }; touch(p); render();
+      if (t.dataset.v === 'done' && typeof SYNC !== 'undefined' && SYNC.shared(p) && !p.cloud.archivedAt) toast(__('Archiving is mandatory now: «Make the archive» below, then remove the project from the cloud.')); } break; }
     case 'next': goStep(S.step + 1); break;
     case 'fltDir': S.f.dir = t.dataset.v; render(); break;
     case 'fltOrder': S.f.order = t.dataset.v; render(); break;
@@ -1839,7 +2007,7 @@ document.addEventListener('click', async (e) => {
     case 'editPt': { const x = byId(p, t.dataset.id); if (x && isCtx(p, x)) { toast(__('Context: measured by the coordinator')); break; } openEditor(t.dataset.id, t.dataset.mode); break; }
     case 'askDelPt': S.confirm = 'delPt'; renderSheet(); break;
     case 'delPt': { const gone = p.points.find(x => x.id === S.ed.id); if (!gone || !canDelete(p, gone)) break; for (const c of rawChildren(p, gone.id)) c.parentId = gone.parentId || ''; p.points = p.points.filter(x => x !== gone); touch(p); closeSheet(); for (const ph of gone?.photos || []) Photos.remove(ph); break; }
-    case 'cancelConfirm': S.confirm = null; render(); break;
+    case 'cancelConfirm': if (String(S.confirm || '').startsWith('trvClear')) { S.confirm = null; updateLive(); break; } if (String(S.confirm || '').startsWith('devRevoke')) { S.confirm = null; acctPaint(); break; } S.confirm = null; render(); break;
     case 'abkNow': { const r = await AutoBackup.take('manual'); toast(r ? __('Copy made: {n} projects', { n: r.n }) : __('There is no project to copy')); renderSheet(); break; }
     case 'abkRestore': { const r = await AutoBackup.restore(t.dataset.k); if (!r) { toast(__('The copy could not be read')); break; }
       Store.projects = Store.spaces[lsKey(LS_KEY)] || Store.projects;
@@ -1854,6 +2022,11 @@ document.addEventListener('click', async (e) => {
       stampPt(p, pt, act === 'setShape' ? 'fld' : 'struct');
       touch(p); renderSheet(); updateLive(); break;
     }
+    case 'travClear': S.confirm = 'trvClear:' + t.dataset.phase; updateLive(); break;
+    case 'travClearGo': { const pt = p.points.find(x => x.id === S.ed?.id); const ph = t.dataset.phase; S.confirm = null;
+      if (pt && pt.meas && pt.meas[ph]) { pt.meas[ph].r = []; delete pt.meas[ph].gsig; stampPt(p, pt, ph); touch(p); toast(__('Readings cleared')); }
+      renderSheet(); updateLive(); break; }
+    case 'travPt': { const f = document.getElementById(fid(S.ed?.id, t.dataset.phase, 'r', +t.dataset.i)); if (f) { f.scrollIntoView({ block: 'center', behavior: 'smooth' }); f.focus({ preventScroll: true }); } break; }
     case 'moreRd': S.ed.extra[t.dataset.phase] = (S.ed.extra[t.dataset.phase] || 0) + 1; renderSheet(); updateLive(); break;
     case 'startMeasure': {
       const phase = t.dataset.phase; const ids = S.list.length ? S.list : [];
@@ -1908,6 +2081,24 @@ document.addEventListener('click', async (e) => {
   }
 });
 
+/* 0.9.39: the settings of the grid stay open while they are changed (each change draws the panel again) */
+document.addEventListener('toggle', (e) => { if (e.target && e.target.dataset && e.target.dataset.trvset !== undefined) S.trvOpen = e.target.open; }, true);
+/* 0.9.39: drag the left edge of the docked point panel: wider for the schema of a traverse, narrower for the table; kept per device */
+const DOCK_LS = 'inregelaar.dockW';
+function dockW(w) {
+  const max = Math.max(320, window.innerWidth - (isRail() ? 72 : 0) - 360); const v = Math.round(Math.max(320, Math.min(max, w)));
+  document.documentElement.style.setProperty('--dock-w', v + 'px'); return v;
+}
+let DOCK_SET = 0; try { DOCK_SET = +localStorage.getItem(DOCK_LS) || 0; if (DOCK_SET > 0) dockW(DOCK_SET); } catch (e) { }
+window.addEventListener('resize', () => { if (DOCK_SET > 0) dockW(DOCK_SET); });
+document.addEventListener('pointerdown', (e) => {
+  const g = e.target.closest && e.target.closest('[data-grip]'); if (!g || document.body.dataset.dock !== 'r') return;
+  e.preventDefault(); document.body.dataset.dockdrag = '1'; let last = null;
+  const move = (ev) => { last = dockW(window.innerWidth - ev.clientX); };
+  const up = () => { delete document.body.dataset.dockdrag; window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+    if (last) { DOCK_SET = last; try { localStorage.setItem(DOCK_LS, String(last)); } catch (er) { } } };
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+});
 /* ± button: flips the sign in place; pointerdown keeps the focus (and the on-screen keyboard) on the field */
 document.addEventListener('pointerdown', (e) => { if (e.target.closest && e.target.closest('[data-pm]')) e.preventDefault(); });
 document.addEventListener('click', (e) => {
@@ -1929,6 +2120,8 @@ function onField(e) {
   if (el.id === 'importFile' && e.type === 'change') return importFile(el);
   if (el.dataset.batch !== undefined) { if (e.type !== 'change') return; const fl = el.files ? [...el.files] : []; el.value = ''; if (fl.length) BATCH.open(fl, el.dataset.batch); return; }
   if (el.dataset.aidocrole !== undefined) { const it = S.dlg && S.dlg.type === 'aidocs' && S.dlg.docs[Number(el.dataset.aidocrole)]; if (it) it.role = el.value; return; }
+  if (el.dataset.airef !== undefined) { if (e.type === 'change') BATCH.aiRefSet(el.checked); return; }
+  if (el.dataset.ailesson !== undefined) { if (e.type === 'change') AIP.lessonSet(el.dataset.ailesson, el.checked); return; }
   if (el.dataset.aidocon !== undefined) { if (e.type !== 'change') return; const d = S.dlg; if (!d || d.type !== 'aidocs') return; const v = el.dataset.aidocon; const it = (v[0] === 'd' ? d.docs : d.tabs)[Number(v.slice(1))]; if (it) { it.on = el.checked; renderSheet(); } return; }
   if (el.dataset.batchrole !== undefined) { const it = S.dlg && S.dlg.type === 'batch' && S.dlg.items[Number(el.dataset.batchrole)]; if (it) { it.role = el.value; if (e.type === 'change') renderSheet(); } return; }
   if (el.dataset.aiinfo !== undefined) { if (typeof AIP !== 'undefined') AIP.infoEdit(el); return; }
@@ -1958,6 +2151,8 @@ function onField(e) {
   if (el.dataset.acct !== undefined) { if (S.acct) S.acct[el.dataset.acct] = el.value; return; }
   if (el.dataset.invcode !== undefined) { const A = acctState(); (A.codes = A.codes || {})[el.dataset.invcode] = el.value; return; }
   if (el.dataset.acctorg !== undefined) { if (e.type === 'change') acctRun(() => Cloud.pick(el.value), ''); return; }
+  if (el.dataset.aimodel !== undefined || el.dataset.aieffort !== undefined) { if (e.type !== 'change') return; AIP.setPref(el.dataset.aimodel !== undefined ? 'model' : 'effort', el.value); return; }
+  if (el.dataset.beta !== undefined) { if (e.type !== 'change') return; Beta.set(el.checked); Updater.at = 0; toast(el.checked ? __('Beta channel on: the AI and the updates of the sandbox') : __('Beta channel off: the stable version')); renderSheet(); render(); return; }
   if (el.dataset.set !== undefined) { Settings.v[el.dataset.set] = el.value; Settings.save(); return; }
   if (el.dataset.bk !== undefined) {
     const b = S.dlg.v; const k = el.dataset.bk; const p = cur();
@@ -2011,6 +2206,7 @@ function onField(e) {
   setPath(target, el.dataset.f, v);
   unitsAfterInput(p, el, target);
   if (el.dataset.pt) stampPt(p, target, fieldGroup(el.dataset.f));
+  { const m = el.dataset.pt && /^meas\.(eerste|controle)\.r\./.exec(el.dataset.f); if (m && isNum(v) && TRV.on(target)) { const g = TRV.grid(target); if (g) target.meas[m[1]].gsig = TRV.sig(g); } } // 0.9.39: the grid the readings belong to
   if (el.dataset.pt) { // instrument of the measurement: remember the choice per method, fill it in when the first reading is typed
     const m = /^meas\.(eerste|controle)\.(ins|r\.\d+)$/.exec(el.dataset.f);
     if (m && m[2] === 'ins') { p.insLast = p.insLast || {}; if (v) p.insLast[target.method] = v; }

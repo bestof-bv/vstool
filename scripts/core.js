@@ -1,5 +1,5 @@
 /** version of the app and date of the build (filled in by build.py from mobile/package.json) */
-const APP_VERSION = '0.9.33', APP_BUILD = '2026-11-11';
+const APP_VERSION = '0.12.2', APP_BUILD = '2026-11-19';
 /* ---------- labels: L (interface) and RL (reports) are filled from the language packs, see i18n.js ---------- */
 const MEASURE_STEPS = { 2: 'eerste', 4: 'controle' };
 const stepNames = () => [__('Project'), __('Points'), __('Measure 1'), __('Balancing'), __('Measure 2'), __('Report'), __('Handover')]; // step 4 «Balancing» (was «Dampers», 0.9.17)
@@ -238,7 +238,12 @@ const hasReg = (pt) => pt.reg && pt.reg.type && pt.reg.type !== 'none';
 
 /* ---------- calculations ---------- */
 const mean = (a) => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
-function readings(pt, phase) { return ((pt.meas?.[phase]?.r) || []).filter(isNum); }
+function readings(pt, phase) {
+  const r = (pt.meas?.[phase]?.r) || [];
+  // 0.9.39: with a grid over the section only its points count (readings beyond a smaller grid stay stored, out of the mean)
+  if (typeof TRV !== 'undefined' && TRV.on(pt)) { const g = TRV.grid(pt); if (g) return r.slice(0, g.N).filter(isNum); }
+  return r.filter(isNum);
+}
 function ductArea(pt) {
   const d = pt.duct || {};
   if (d.shape === 'round') return isNum(d.d) && d.d > 0 ? Math.PI * Math.pow(d.d / 1000, 2) / 4 : null;

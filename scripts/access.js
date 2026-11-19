@@ -104,9 +104,11 @@ const Access = {
     if (o.plan !== 'local' && o.until && o.until < now) o.state = 'expired';
     else if (o.status !== 'local' && o.status !== 'demo' && !o.preview && o.checkedAt && now - o.checkedAt > OFFLINE_DAYS * 864e5) o.state = 'offline';
     else o.state = 'ok';
+    // 0.11.0: more devices than the account may use, and the server checks it: read-only until a place is freed
+    if (o.state === 'ok' && o.status === 'cloud' && !o.preview && typeof Device !== 'undefined' && Device.blocked()) o.state = 'device';
     return o;
   },
-  planOf(o) { return o.state === 'expired' || o.state === 'offline' ? PLANS.expired : (PLANS[o.plan] || PLANS.expired); },
+  planOf(o) { return o.state === 'expired' || o.state === 'offline' || o.state === 'device' ? PLANS.expired : (PLANS[o.plan] || PLANS.expired); },
   /** the preview of another role or plan only takes away: what the own role and plan do not include stays locked */
   plan() {
     const o = this.cur(); const p = this.planOf(o); if (!o.preview) return p;
@@ -126,7 +128,10 @@ const Access = {
     return { ok: true };
   },
   check(perm) {
-    const o = this.cur(); const c = this.checkAs(o, perm); if (!c.ok || !o.preview) return c;
+    const o = this.cur(); const c = this.checkAs(o, perm);
+    // 0.10.2: the lead of a shared project manages its crews (packages, merging) whatever his role in the organisation
+    if (!c.ok && c.kind === 'role' && perm === 'package.manage' && typeof SYNC !== 'undefined' && typeof cur === 'function') { const p = cur(); if (p && SYNC.lead(p)) return { ok: true }; }
+    if (!c.ok || !o.preview) return c;
     return this.checkAs(this.cur(true), perm).ok ? c : { ok: false, kind: 'preview' };
   },
   can(perm) { return this.check(perm).ok; },
@@ -135,6 +140,7 @@ const Access = {
     if (c.kind === 'role') return __('Not available for your role ({role})', { role: L.role ? L.role[this.role()] : this.role() });
     if (c.kind === 'demo') return __('Not in the demo: register for the full version');
     if (c.kind === 'preview') return __('Only shown in the preview: your own role or plan does not include it');
+    if (c.kind === 'readonly' && c.state === 'device') return __('This device has no place on your account: disconnect another device under Account › Devices');
     if (c.kind === 'readonly') return c.state === 'offline' ? __('Connect to the internet to check your subscription') : __('The subscription has ended: you can open and export, not edit');
     return __('Available in the {plan} plan', { plan: (L.plan || {})[c.need] || c.need });
   },

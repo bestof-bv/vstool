@@ -141,7 +141,9 @@ const BATCH = {
     const isSch = (n) => /^sch[eé]ma\s*·|pid|p&id|sch[eé]ma|aeraul|principe|riser/i.test(n) || n.startsWith(__('Schema') + ' ·');
     const tabsAll = tabs.map(a => ({ id: a.id, name: a.name, on: true }));
     const nt = String((p.notes && p.notes.project && p.notes.project.text) || '').trim(); if (nt) tabsAll.push({ id: 'notes', name: __('Notes of the project'), on: true, note: true });
-    S.dlg = { type: 'aidocs', docs: docs.map(d => ({ id: d.id, name: d.name, role: isSch(d.name) ? 'schema' : 'plan', on: true })), tabs: tabsAll };
+    const ref = p.aiRef || null; // 0.9.36: a reference of the control set keeps its choice of documents
+    const R = (id) => ref && (ref.docs || []).find(x => x.id === id);
+    S.dlg = { type: 'aidocs', docs: docs.map(d => ({ id: d.id, name: d.name, role: R(d.id) ? R(d.id).role : isSch(d.name) ? 'schema' : 'plan', on: ref ? !!R(d.id) : true })), tabs: tabsAll.map(t => ref ? Object.assign(t, { on: (ref.tabs || []).includes(t.id) }) : t), ref: !!ref };
     pushNav(); renderSheet();
   },
   aiPickHtml(d) {
@@ -150,11 +152,19 @@ const BATCH = {
       <section class="card"><p class="small" style="margin:0">${__h('Choose the plans, schemas and tables of the project the assistant reads together.')}</p>
         <div class="stack-s">${d.docs.map((it, i) => `<label class="row batch-it"><input type="checkbox" data-aidocon="d${i}"${it.on ? ' checked' : ''}><span class="grow small"><b>${esc(it.name)}</b></span>${sel(it, i)}</label>`).join('')}
         ${d.tabs.map((it, i) => `<label class="row batch-it"><input type="checkbox" data-aidocon="t${i}"${it.on ? ' checked' : ''}><span class="chip">${esc(it.note ? __('text') : __('table'))}</span><span class="grow small"><b>${esc(it.name)}</b></span></label>`).join('')}</div>
-      </section>`,
-      `<button class="btn" data-act="closeSheet">${__h('Cancel')}</button><button class="btn primary" data-act="aiDocsGo"${d.docs.some(x => x.on) ? '' : ' disabled'}>✦ ${__h('Read with AI')}</button>`);
+      </section>
+      ${this.evalOk() ? `<section class="card"><div class="hd"><h4>${__h('Control set of the AI')}</h4><span class="chip beta">BETA</span></div>
+        <label class="row"><input type="checkbox" data-airef${d.ref ? ' checked' : ''}><span class="grow small">${__h('Reference for the AI (control set): the {n} points of this project are checked', { n: cur().points.length })}</span></label>
+        <span class="small muted">${__h('A control run reads the chosen documents again and compares the rows with the points of the project. Nothing is added; the result and the cost stay in the history.')}</span></section>` : ''}`,
+      `<button class="btn" data-act="closeSheet">${__h('Cancel')}</button>${this.evalOk() ? `<button class="btn" data-act="aiDocsEval"${d.docs.some(x => x.on) ? '' : ' disabled'}>${__h('Control run')}</button>` : ''}<button class="btn primary" data-act="aiDocsGo"${d.docs.some(x => x.on) ? '' : ' disabled'}>✦ ${__h('Read with AI')}</button>`);
   },
-  async aiPickGo() {
+  evalOk() { const p = cur(); return typeof Beta !== 'undefined' && Beta.on() && p && p.points.some(pt => pt.kind !== 'device'); },
+  /** the choice of documents of a reference of the control set */
+  refOf(d) { return { at: Date.now(), docs: d.docs.filter(x => x.on).map(x => ({ id: x.id, role: x.role })), tabs: d.tabs.filter(x => x.on).map(x => x.id) }; },
+  aiRefSet(on) { const d = S.dlg; const p = cur(); if (!d || d.type !== 'aidocs' || !p) return; d.ref = !!on; if (on) p.aiRef = this.refOf(d); else delete p.aiRef; touch(p); renderSheet(); },
+  async aiPickGo(mode = 'merge') {
     const d = S.dlg; const p = cur(); if (!d || d.type !== 'aidocs' || !p) return;
+    if (mode === 'eval' || d.ref) { p.aiRef = this.refOf(d); touch(p); }
     const sources = [], tables = [];
     for (const it of d.docs) {
       if (!it.on) continue; const doc = (p.docs || []).find(x => x.id === it.id); if (!doc) continue;
@@ -172,7 +182,7 @@ const BATCH = {
     }
     if (!sources.length) { toast(__('Choose a PDF of the drawings')); return; }
     S.dlg = null; closeSheetNow();
-    AIP.open(sources, 'merge', tables);
+    AIP.open(sources, mode, tables);
   },
   listHtml(p) {
     const L = p.attach || []; const T = p.traces || []; if (!L.length && !T.length) return '';

@@ -59,12 +59,29 @@ function catEntryRow(e, own) {
   return `<div class="row small" style="flex-wrap:nowrap;align-items:center"><div style="min-width:0;flex:1"><b>${esc(own ? catName(e) : catSizeTxt(e))}</b>${facts ? (own ? '<br>' : ' ') + `<span class="muted">${facts}</span>` : ''}</div>
     ${own ? `<button class="btn sm ghost" data-act="catEdit" data-id="${esc(e.id)}">${__h('Edit')}</button>` : ''}<button class="btn sm ghost" data-act="catCopy" data-id="${esc(e.id)}" title="${__h('Copy into an own entry and edit it')}">${__h('Copy')}</button></div>`;
 }
+/** 0.11.1: size of an entry for sorting (cross-section in mm²) and the range «smallest – largest» of a type */
+const catArea = (e) => { if (isNum(e.dn)) return Math.PI * e.dn * e.dn / 4; const r = rectOf(e.size); return r ? r[0] * r[1] : Infinity; };
+const catSort = (arr) => arr.slice().sort((a, b) => catArea(a) - catArea(b) || natCmp(a.size || '', b.size || ''));
+function catRange(arr) {
+  const s = catSort(arr).filter(e => catArea(e) < Infinity);
+  if (!s.length) return __h('{n} sizes', { n: arr.length });
+  const a = catSizeTxt(s[0]), b = catSizeTxt(s[s.length - 1]);
+  return `<span style="white-space:nowrap">${a === b ? esc(a) : `${esc(a)} – ${esc(b)}`}</span>` + (arr.length > 1 ? ` <span style="white-space:nowrap">· ${__h('{n} sizes', { n: arr.length })}</span>` : '');
+}
+/** the entries grouped by make, then by type (series · kind); each type folds open to all its sizes */
+function catGroupsHTML(arr, own) {
+  const makers = new Map();
+  for (const e of arr) { const m = (e.maker || '').trim() || __('Other'); const t = [e.series, catKind(e)].filter(Boolean).join(' · ') || '—';
+    if (!makers.has(m)) makers.set(m, new Map()); const g = makers.get(m); if (!g.has(t)) g.set(t, []); g.get(t).push(e); }
+  return [...makers.entries()].sort((x, y) => natCmp(x[0], y[0])).map(([m, types]) => `<div class="stack-s catmk"><span class="small" style="font-weight:600">${esc(m)}</span>
+    ${[...types.entries()].sort((x, y) => natCmp(x[0], y[0])).map(([t, list]) => { const k = (own ? 'own:' : '') + m + ' ' + t; const items = catSort(list);
+      return `<details class="more" data-catgrp="${esc(k)}"${CAT_OPEN.has(k) ? ' open' : ''}><summary><span style="min-width:0">${esc(t)}</span><span class="small muted" style="font-family:var(--font-data);font-weight:400;min-width:0;text-align:right">${catRange(list)}</span></summary>
+      <div class="inner">${!own && items[0].src ? `<div class="small"><a href="${esc(items[0].src)}" target="_blank" rel="noopener">${__h('source')} ↗</a> <span class="muted">${esc(items[0].doc || '')}</span></div>` : ''}${items.map(e => catEntryRow(e, own)).join('')}</div></details>`; }).join('')}</div>`).join('');
+}
 function catCardHTML() {
   const own = catOwn(); const lib = CAT_LIB;
-  const byMaker = (arr) => { const m = new Map(); for (const e of arr) { const k = `${e.maker} ${e.series} · ${catKind(e)}`; if (!m.has(k)) m.set(k, []); m.get(k).push(e); } return [...m.entries()]; };
-  const libRows = byMaker(lib).map(([k, arr]) => `<details class="more" data-catgrp="${esc(k)}"${CAT_OPEN.has(k) ? ' open' : ''}><summary><span style="min-width:0">${esc(k)}</span><span class="small muted" style="font-family:var(--font-data);font-weight:400;min-width:0">${arr.map(catSizeTxt).join(', ')}</span></summary>
-    <div class="inner">${arr[0].src ? `<div class="small"><a href="${esc(arr[0].src)}" target="_blank" rel="noopener">${__h('source')} ↗</a> <span class="muted">${esc(arr[0].doc || '')}</span></div>` : ''}${arr.map(e => catEntryRow(e, false)).join('')}</div></details>`).join('');
-  const ownRows = own.map(e => catEntryRow(e, true)).join('');
+  const libRows = catGroupsHTML(lib, false);
+  const ownRows = catGroupsHTML(own, true);
   return `<section class="card"><h3>${__h('Catalogue of technical sheets')}</h3>
     <p class="small muted" style="margin:0">${__h('Iris dampers, control dampers and CAV / VAV controllers: k per position, flow range and minimum Δp from the official sheet of the manufacturer. Link a sheet at the damper of a point; the project keeps a copy and the report lists the sheets used.')}</p>
     <div class="stack-s"><span class="label">${__h('Built-in (official sheets)')}</span>${libRows}<span class="small muted">${__h('Built-in entries cannot be changed: «Copy» makes an own entry with the same data to edit.')}</span></div>
@@ -83,10 +100,12 @@ function catDialogHTML(d) {
   const e = d.e; const kinds = Object.fromEntries(CAT_KINDS.map(k => [k, (L.reg || {})[k] || k]));
   const f = (k, label, o = {}) => { const id = 'catf-' + k; const v = e[k];
     return `<label class="field${o.full ? ' full' : ''}" for="${id}">${lbl(label, o.nl)}${o.opts ? `<select id="${id}" data-catf="${k}">${Object.entries(o.opts).map(([a, b]) => `<option value="${esc(a)}"${String(v) === a ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select>`
-      : `<${o.area ? 'textarea' : 'input'} id="${id}" data-catf="${k}"${o.num ? ' class="num" inputmode="decimal" data-num' : ''} ${o.area ? '' : `value="${esc(o.num ? fmtIn(v) : v ?? '')}"`} placeholder="${esc(o.ph || '')}">${o.area ? esc(v ?? '') + '</textarea>' : ''}`}</label>`; };
+      : `<${o.area ? 'textarea' : 'input'} id="${id}" data-catf="${k}"${o.list ? ` list="${o.list}" autocomplete="off"` : ''}${o.num ? ' class="num" inputmode="decimal" data-num' : ''} ${o.area ? '' : `value="${esc(o.num ? fmtIn(v) : v ?? '')}"`} placeholder="${esc(o.ph || '')}">${o.area ? esc(v ?? '') + '</textarea>' : ''}`}</label>`; };
   return sheetFrame(d.copy ? __('Technical sheet — copy') : __('Technical sheet'), `
     <section class="card"><div class="grid2">
-      ${f('maker', __('Manufacturer'), { nl: 'Fabrikant', ph: 'Grada' })}${f('series', __('Type / series'), { nl: 'Type', ph: 'IRIS' })}
+      ${f('maker', __('Manufacturer'), { nl: 'Fabrikant', ph: 'Grada', list: 'catMakers' })}${f('series', __('Type / series'), { nl: 'Type', ph: 'IRIS', list: 'catSeries' })}
+      <datalist id="catMakers">${[...new Set(catAll().map(x => x.maker).filter(Boolean))].sort(natCmp).map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+      <datalist id="catSeries">${[...new Set(catAll().filter(x => !e.maker || x.maker === e.maker).map(x => x.series).filter(Boolean))].sort(natCmp).map(x => `<option value="${esc(x)}">`).join('')}</datalist>
       ${f('kind', __('Kind'), { opts: kinds })}${f('dn', __('Nominal size DN'), { num: true, ph: '200' })}
       ${f('size', __('Size (rectangular)'), { ph: '400x200' })}${f('kU', __('Unit of k'), { opts: { ls: __('Q in l/s = k · √Δp'), m3h: __('Q in m³/h = k · √Δp') } })}
       ${f('k', __('k at the measuring taps (one value)'), { num: true })}${f('posOpen', __('Position «open»'), { ph: '1' })}

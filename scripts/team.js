@@ -4,7 +4,7 @@
    eerste (initial measurement + position before), controle (control measurement + position after, locked), fld (method, k/Ak, damper data, status, note). */
 const PKG_APP = 'inregelaar-ventilatie';
 const MERGE_GROUPS = ['eerste', 'controle', 'fld', 'pin'];
-const FLD = { top: ['method', 'k', 'kU', 'k2', 'aeff', 'size', 'ttype', 'note', 'status'], duct: ['shape', 'd', 'w', 'h'], reg: ['type', 'model', 'cat', 'vmin', 'vmax', 'vnom', 'dpmin', 'opmode', 'ctl', 'state', 'cond'], fd: ['from', 'to', 'pass', 'ei', 'act', 'sw', 'hatch', 'plate', 'test', 'sig', 'tby'] };
+const FLD = { top: ['method', 'k', 'kU', 'k2', 'aeff', 'size', 'ttype', 'note', 'status'], duct: ['shape', 'd', 'w', 'h', 'plan', 'rule', 'rings', 'axes', 'side', 'nx', 'ny', 'wall', 'probe', 'ymin', 'up', 'dn'], reg: ['type', 'model', 'cat', 'vmin', 'vmax', 'vnom', 'dpmin', 'opmode', 'ctl', 'state', 'cond'], fd: ['from', 'to', 'pass', 'ei', 'act', 'sw', 'hatch', 'plate', 'test', 'sig', 'tby'] };
 const PH_REG = { eerste: ['posBefore'], controle: ['posAfter', 'locked'] };
 const STRUCT_PATHS = ['code', 'systemId', 'dir', 'designQ', 'parentId', 'kind', 'branch', 'zone', 'room'];
 
