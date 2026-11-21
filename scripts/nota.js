@@ -127,10 +127,8 @@ function genConclusionParts(p) {
   const P1 = [];
   const mu = methodsUse(p);
   const lc1 = (t) => t ? t[0].toLowerCase() + t.slice(1) : t;
-  if (mu.length) P1.push(_r('De debieten werden gemeten met {list}.', { list: mu.map(x => {
-    const m = lc1(RL.method[x.m] || x.m), ins = x.ins.map(insLabelR); const nm = x.ins.length === 1 ? [x.ins[0].name, x.ins[0].type].filter(Boolean).join(' ') : '';
-    const same = nm && nm.toLowerCase().startsWith(m.split(' ')[0]); const det = same ? [x.ins[0].serial && 'SN ' + x.ins[0].serial, x.ins[0].cal && _r('gekalibreerd op {d}', { d: dateNL(x.ins[0].cal) })].filter(Boolean).join(', ') : '';
-    return `${same ? lc1(nm) + (det ? ' (' + det + ')' : '') : m + (ins.length ? ' (' + ins.join('; ') + ')' : '')} ${x.n === 1 ? _r('op 1 meetpunt') : _r('op {n} meetpunten', { n: x.n })}`; }).join(', ') }));
+  /* 0.13.3: methods with their number of points only; the instruments (type, serial, calibration) stand in §1 and §4 */
+  if (mu.length) P1.push(_r('De debieten werden gemeten met {list}; de meettoestellen staan in §1 en §4.', { list: mu.map(x => `${lc1(RL.method[x.m] || x.m)} ${x.n === 1 ? _r('op 1 meetpunt') : _r('op {n} meetpunten', { n: x.n })}`).join(', ') }));
   for (const s of p.systems) { const m = flowMethodText(s); if (m) P1.push(_r('Het totaaldebiet van {s} werd bepaald via {m}.', { s: s.code, m })); }
   P1.push(_r('Het inregelen gebeurde volgens de proportionele methode: van onder naar boven, binnen elk niveau van de groep met de hoogste verhouding naar de indexgroep, met de debietindex volledig open als referentie.'));
   const P2 = [];
@@ -148,20 +146,21 @@ function genConclusionParts(p) {
     const qd = s.design[dir]; const q = systemQ(p, s, dir, 'controle') ?? mainDuctQ(p, s.id, dir, 'controle'); const d = devOf(q, qd);
     if (isNum(d)) P3.push(_r('{s} {dir}: gemeten {q} m³/h t.o.v. ontwerp {qd} m³/h ({d} %), {inout} de tolerantie van ±{t} %.', { s: s.code, dir: RL.dir[dir].toLowerCase(), q: nl(q), qd: nl(qd), d: (d >= 0 ? '+' : '') + nl(d * 100, 1), inout: inTol(d, p.tol.system) ? _r('binnen') : _r('buiten'), t: nl(p.tol.system) }));
   }
-  const all = p.points.filter(measurable); const done = all.filter(pt => isNum(ptQ(p, pt, 'controle'))); const nok = done.filter(pt => ptStatus(pt, p) === 'nok');
+  const all = p.points.filter(measurable); const so = sumOnly(p, all, 'controle'); const done = all.filter(pt => ownQ(p, pt, 'controle')); const nok = done.filter(pt => ptStatus(pt, p) === 'nok');
   if (done.length) {
     const worst = done.map(pt => ({ pt, d: ptDev(pt, p) })).filter(x => isNum(x.d)).sort((a, b) => Math.abs(b.d) - Math.abs(a.d))[0];
     P3.push((nok.length ? _r('{a} van {b} meetpunten liggen binnen de tolerantie van ±{t} %. Buiten tolerantie: {list}.', { a: done.length - nok.length, b: done.length, t: nl(p.tol.terminal), list: nok.map(x => x.code).join(', ') })
       : _r('Alle {n} meetpunten liggen binnen de tolerantie van ±{t} % van het ontwerpdebiet.', { n: done.length, t: nl(p.tol.terminal) }))
-      + (worst ? ' ' + _r('De grootste afwijking is {d} % ({code}).', { d: (worst.d >= 0 ? '+' : '') + nl(worst.d * 100, 1), code: worst.pt.code || '?' }) : ''));
+      + (worst ? ' ' + _r('De grootste afwijking is {d} % ({code}).', { d: (worst.d >= 0 ? '+' : '') + nl(worst.d * 100, 1), code: worst.pt.code || '?' }) : '')
+      + (so.length ? ' ' + _r('{n} knooppunt(en) zonder eigen meting tellen als som van hun slaves.', { n: so.length }) : ''));
   }
-  { const rt = roomText(p); if (rt) P3.push(rt); }
+  { const rs = roomSums(p).filter(r => r.dev != null); const bad = rs.filter(r => !r.ok); if (rs.length) P3.push(bad.length ? roomText(p) : _r('Alle {n} ruimten binnen ±{t} % (som van de eindapparaten).', { n: rs.length, t: nl(p.tol.room) })); }
   for (const g of pressureGroups(p)) { const a = indexText(g, 'eerste'), b = indexText(g, 'controle'); if (a || b) P3.push(_r('Drukindex {s} {pe} — vóór: {a}; na: {b}.', { s: g.s.code, pe: RL.pe[g.dir], a: a || '-', b: b || '-' })); }
   for (const e of sysEntries(p)) { const s = e.units[0]; const r = CL_RULES.bal(p, s); if (r && r.v && r.v !== 'nvt') P3.push(e.g ? _r('Balans {note}.', { note: r.note }) : _r('Balans {s}: {note}.', { s: s.code, note: r.note })); } // a system of several units once
   const pp = perPersonText(p); if (pp) P3.push(pp);
   const pcT = pcText(p); if (pcT) P3.push(pcT);
   const stp = all.filter(pt => pt.status && !isNum(ptQ(p, pt, 'controle'))); if (stp.length) P3.push(_r('Niet gemeten zoals voorzien: {list}.', { list: stp.map(x => `${x.code} (${RL.status[x.status].toLowerCase()})`).join(', ') }));
-  const rest = all.length - done.length - stp.length; if (rest > 0) P3.push(_r('{n} meetpunt(en) niet gecontroleerd.', { n: rest }));
+  const rest = all.length - done.length - stp.length - so.length; if (rest > 0) P3.push(_r('{n} meetpunt(en) niet gecontroleerd.', { n: rest }));
   const ds = damperSentence(p); if (ds) P3.push(ds);
   const open = clOpen(p).length; if (open) P3.push(_r('Open stappen in de checklist inbedrijfstelling: {n}.', { n: open }));
   return [P1.join(' '), P2.join(' '), P3.join(' ')].filter(Boolean);

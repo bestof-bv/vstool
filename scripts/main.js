@@ -54,4 +54,4 @@ authFromLink().then((t) => {
 });
 window.addEventListener('online', cloudSync);
 /* the «Password and devices» section of the account card stays open across repaints */
-document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.dataset && d.dataset.acctdet !== undefined) acctState().pwOpen = d.open; }, true);
+document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.dataset && d.dataset.acctdet !== undefined) acctState().pwOpen = d.open; if (d && d.dataset && d.dataset.mfadet !== undefined) { const A = acctState(); A.mfa = Object.assign(A.mfa || {}, { open: d.open }); } }, true);

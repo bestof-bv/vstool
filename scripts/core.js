@@ -1,5 +1,5 @@
 /** version of the app and date of the build (filled in by build.py from mobile/package.json) */
-const APP_VERSION = '0.12.2', APP_BUILD = '2026-11-19';
+const APP_VERSION = '0.15.3', APP_BUILD = '2026-11-22';
 /* ---------- labels: L (interface) and RL (reports) are filled from the language packs, see i18n.js ---------- */
 const MEASURE_STEPS = { 2: 'eerste', 4: 'controle' };
 const stepNames = () => [__('Project'), __('Points'), __('Measure 1'), __('Balancing'), __('Measure 2'), __('Report'), __('Handover')]; // step 4 «Balancing» (was «Dampers», 0.9.17)
@@ -818,6 +818,10 @@ function nodeQ(p, pt, phase, d = 0) {
   return { q: n === kids.length ? s : null, derived: true, n, m: kids.length, partial: n ? s : null };
 }
 function ptQ(p, pt, phase) { return nodeQ(p, pt, phase).q; }
+/** 0.13.3: a point with its own measurement (a master shown as Σ of its slaves is not one) — the counts of the report use these */
+function ownQ(p, pt, phase) { return isNum(calcQ(pt, phase, p).q); }
+/** 0.13.3: masters without their own measurement whose flow is the sum of the slaves */
+function sumOnly(p, pts, phase) { return pts.filter(pt => !ownQ(p, pt, phase) && isNum(ptQ(p, pt, phase))); }
 /** design flow; a master without its own design = Σ design of its slaves */
 /** Σ of the design flows of the slaves — like the measured Σ, only when every slave has one: a partial sum is no target.
  *  { v: Σ or null, n: slaves with a design flow, m: slaves, partial: Σ of the known ones when some are missing } */

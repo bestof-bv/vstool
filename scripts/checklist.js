@@ -122,7 +122,7 @@ const CL_RULES = {
   term(p) { return clPos(p, p.points.filter(x => !isNode(x) && !isDev(x) && hasReg(x) && !DEVICE_ONLY.includes(x.reg.type))); },
   ctl(p) {
     const all = p.points.filter(measurable); if (!all.length) return null;
-    const done = all.filter(x => isNum(ptQ(p, x, 'controle'))), skip = all.filter(x => x.status && !done.includes(x)), miss = all.filter(x => !done.includes(x) && !skip.includes(x));
+    const so = sumOnly(p, all, 'controle'); const done = all.filter(x => ownQ(p, x, 'controle')), skip = all.filter(x => x.status && !done.includes(x)), miss = all.filter(x => !done.includes(x) && !skip.includes(x) && !so.includes(x)); // 0.13.3: a master shown as Σ is not «niet gemeten»
     if (!done.length) return null;
     const ok = done.filter(x => ptStatus(x, p) === 'ok').length;
     const txt = _r('{a} van {b} binnen ±{t} %', { a: ok, b: done.length, t: clN(p.tol.terminal) });

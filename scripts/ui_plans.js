@@ -256,13 +256,13 @@ document.addEventListener('click', async (ev) => {
     case 'pvOpenZone': { const d = docById(p, v); const z = d && zoneById(d, t.dataset.zone); if (z) openPlan({ doc: d.id, page: z.page, zone: z.id }); break; }
     case 'pvFrag': openPlan({ mode: 'frag', owner: t.dataset.owner || '' }); break;
     case 'pinDel': { const pt = byId(p, v); if (pt) { setPin(p, pt, null); refreshOwner(); toast(__('Removed from the plan')); } break; }
-    case 'docAskDel': S.confirm = 'docDel:' + v; render(); break;
+    case 'docAskDel': S.confirm = 'docDel:' + v; blkRefresh('plans'); break;
     case 'docDel': {
       const d = docById(p, v); if (!d) break; const u = docUsage(p, d.id);
       for (const x of u.frags) { delete x.ph.src; if (x.ph.edit) x.ph.edit.pins = false; } // the rendered picture stays as a plain image
       for (const pt of u.pins) setPin(p, pt, null);
       p.docs = p.docs.filter(x => x !== d); S.confirm = null; touch(p);
-      for (const r of d.revs) await Docs.release(r); render(); toast(__('Plan deleted')); break;
+      for (const r of d.revs) await Docs.release(r); blkRefresh('plans'); toast(__('Plan deleted')); break;
     }
     case 'docMoveRev': {
       const d = docById(p, v); if (!d) break; const r = docCur(d); const list = docUsage(p, d.id).frags.filter(x => x.ph.src.file && revOf(d, x.ph.src.file) !== r);
@@ -274,7 +274,7 @@ document.addEventListener('click', async (ev) => {
           const tgt = x.cover ? ph.photo : ph; const old = { id: tgt.id, assetId: tgt.assetId, url: tgt.url }; Object.assign(tgt, { id: nr.id, w: nr.w, h: nr.h, mime: nr.mime, assetId: nr.assetId, url: nr.url }); Photos.remove(old); n++; } catch (e) { console.error(e); }
       }
       touch(p); for (const o of olds) if (!docUsage(p, d.id).frags.some(x => revOf(d, x.ph.src.file) === o)) { /* the old revision stays in the list: it is the history of the plan */ }
-      render(); toast(__('Fragments moved to rev. {r}: {n}', { r: r.rev, n })); break;
+      blkRefresh('plans'); toast(__('Fragments moved to rev. {r}: {n}', { r: r.rev, n })); break;
     }
     case 'phEdit': case 'phPlan': {
       if (!S.pv) break; const list = photoList(p, S.pv.owner, false); const ph = list.find(x => x.id === S.pv.id); if (!ph) break; const owner = S.pv.owner;
@@ -333,12 +333,12 @@ document.addEventListener('change', async (ev) => {
     const files = [...(el.files || [])]; el.value = ''; if (!files.length) return; let n = 0, same = 0;
     toast(__('Saving the plan…'));
     for (const f of files) { try { const r = await Docs.add(p, f); if (r.existed) same++; else n++; } catch (e) { console.error(e); toast(e && e.code === 'storage' ? __('Device storage is full') : e && e.code === 'heic' ? __('HEIC is not supported — use JPEG or PNG') : __('Could not read the file')); } }
-    if (n || same) { touch(p); render(); toast(same && !n ? __('This plan is already in the project') : __('Plans added: {n}', { n })); }
+    if (n || same) { touch(p); blkRefresh('plans'); toast(same && !n ? __('This plan is already in the project') : __('Plans added: {n}', { n })); }
     return;
   }
   if (el.dataset.docrev !== undefined) {
     const d = docById(p, el.dataset.docrev); const f = el.files && el.files[0]; el.value = ''; if (!d || !f) return;
-    try { toast(__('Saving the plan…')); const r = await Docs.addRev(p, d, f); if (r.same) { toast(__('This file is already the current revision')); return; } touch(p); pinPrevCache.clear(); render(); toast(__('New revision {r} — points stay on their place; fragments can be moved to it', { r: r.rev.rev })); }
+    try { toast(__('Saving the plan…')); const r = await Docs.addRev(p, d, f); if (r.same) { toast(__('This file is already the current revision')); return; } touch(p); pinPrevCache.clear(); blkRefresh('plans'); toast(__('New revision {r} — points stay on their place; fragments can be moved to it', { r: r.rev.rev })); }
     catch (e) { console.error(e); toast(__('Could not read the file')); }
     return;
   }

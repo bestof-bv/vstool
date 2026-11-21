@@ -17,8 +17,8 @@ function supportCard() {
   const status = { open: __('waiting for support'), answered: __('answered'), closed: __('closed') };
   const list = Support.threads.map(t => { const open = st.open === t.id; const un = Support.unread(t);
     return `<div class="stack-s" style="border-top:1px solid var(--line);padding-top:8px">
-      <div class="row small"><button class="btn sm ghost" data-act="supThread" data-v="${esc(t.id)}">${open ? '▾' : '▸'} ${un ? '● ' : ''}${esc(t.subject || T[t.topic] || '—')}</button><span class="spacer"></span>
-        <span class="muted">${esc(status[t.status] || t.status)} · ${esc(fmtDate(Date.parse(t.updated_at)))}</span></div>
+      <div class="row small" style="flex-wrap:wrap;align-items:flex-start"><button class="btn sm ghost wrap" style="flex:1 1 200px" data-act="supThread" data-v="${esc(t.id)}">${open ? '▾' : '▸'} ${un ? '● ' : ''}${esc(t.subject || T[t.topic] || '—')}</button>
+        <span class="muted" style="padding-top:6px">${esc(status[t.status] || t.status)} · ${esc(fmtDate(Date.parse(t.updated_at)))}</span></div>
       ${open ? `${(Support.msgs[t.id] || []).map(m => `<div class="small" style="padding:8px 10px;border-radius:8px;white-space:pre-wrap;${m.from_staff ? 'background:var(--accent-soft)' : 'border:1px solid var(--line)'}">
           <span class="muted">${m.from_staff ? __h('Support') : __h('You')} · ${esc(fmtDate(Date.parse(m.created_at)))}</span><br>${esc(m.body)}</div>`).join('')}
         <label class="field" for="sup-r-${esc(t.id)}">${lbl(__('Your answer'))}<textarea id="sup-r-${esc(t.id)}" data-supreply="${esc(t.id)}" style="min-height:64px"></textarea></label>
@@ -30,7 +30,7 @@ function supportCard() {
   const pname = (id) => { const p = Store.projects[id]; return p ? (p.info && p.info.nr ? p.info.nr + ' · ' : '') + ((p.info && p.info.name) || id) : id; };
   return `<section class="card" id="sup-card"><h3>${__h('Help and support')}</h3>
     <p class="small muted" style="margin:0">${__h('Ask Bestof bv a question or report a problem; the answer appears here. The app version and this device go along with the request.')}</p>
-    <div class="grid2"><label class="field" for="sup-topic">${lbl(__('Subject'))}<select id="sup-topic" data-supf="topic">${Object.entries(T).map(([k, v]) => `<option value="${k}"${st.topic === k ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label></div>
+    <label class="field" for="sup-topic">${lbl(__('Subject'))}<select id="sup-topic" data-supf="topic">${Object.entries(T).map(([k, v]) => `<option value="${k}"${st.topic === k ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
     <label class="field" for="sup-new">${lbl(__('Your question'))}<textarea id="sup-new" data-supf="body" style="min-height:80px"></textarea></label>
     <div class="row"><button class="btn sm primary" data-act="supSend"${busy}>${__h('Send to support')}</button><span class="spacer"></span><button class="btn sm ghost" data-act="supRefresh"${busy}>${__h('Refresh')}</button></div>
     ${st.err ? `<div class="small warn">${esc(st.err)}</div>` : ''}${st.info ? `<div class="small" style="color:var(--ok)">${esc(st.info)}</div>` : ''}

@@ -23,6 +23,11 @@ function repQ(p, pt, phase, d = 0) {
   let s = 0; for (const k of kids) { const r = repQ(p, k, phase, d + 1); if (r.q == null) return { q: null, der: true }; s += r.q; }
   return { q: s, der: true };
 }
+/** 0.14.0: a moment in Belgian time, dd/mm/yyyy hh:mm */
+const tsNL = (iso) => { if (!iso) return ''; try { return new Date(iso).toLocaleString('nl-BE', { timeZone: 'Europe/Brussels', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(',', ''); } catch (e) { return String(iso).slice(0, 16).replace('T', ' '); } };
+const maskMail = (e) => String(e || '').replace(/^(.).*?(.)@/, '$1…$2@');
+/** 0.13.3: step 12 «n.v.t.» (no fan curve) keeps the working point as information only */
+const wpNote = (x, txt) => txt && x && x.v === 'nvt' ? _r('ter info: {t}', { t: txt }) : txt;
 /** one row of measured values per point, shared by Excel and PDF */
 function rowData(p, pt) {
   const c2 = calcQ(pt, 'controle', p);
@@ -103,7 +108,7 @@ function planPagesOf(p) {
   return out;
 }
 /** «plan — LG1 — Verdieping 1» */
-function ppTitle(pp) { return [pp.d.name, pp.zone ? pp.zone.name : '', pageTitle(pp.d, pp.pg) || (pp.r.pages.length > 1 ? 'p. ' + pp.pg : '')].filter(Boolean).join(' — '); }
+function ppTitle(pp) { const parts = [pp.d.name, pageTitle(pp.d, pp.pg) || (pp.r.pages.length > 1 ? 'p. ' + pp.pg : ''), pp.zone ? pp.zone.name : ''].map(x => String(x || '').trim()).filter(Boolean); return parts.filter((x, i) => parts.findIndex(y => y.toLowerCase() === x.toLowerCase()) === i).join(' — '); } // 0.13.3: plan → page → zone, a name only once
 async function planImage(pp, max) {
   const v = viewOf(pp.d, pp.pg, pp.zone && pp.zone.id); // 0.9.18: the page view of the plan (turn, visible part); 0.9.19: or of its snapshot
   try { const c = await renderEdit(Docs.source(pp.r, pp.pg), { rot: v.rot, fine: 0, crop: v.crop }, { outMax: max, pins: pp.draw || pp.pins, pinScale: 0.45, upscale: true }); return { url: c.toDataURL('image/jpeg', 0.88), w: c.width, h: c.height }; }
@@ -350,13 +355,18 @@ async function buildXlsx(p) {
   ];
   for (const t of instr) { ws.set(r, 1, t, S.instr); ws.fillRange(r, 2, NC, S.instr); ws.merge(r, 1, r, NC); ws.height(r, 22); r++; }
   r++;
-  for (const [c1, t] of [[1, _r('Uitgevoerd door')], [9, _r('Gecontroleerd')], [18, _r('Aanvaard (klant)')]]) {
-    ws.set(r, c1, t, { font: f(9, true, HS.navy) });
-    ws.set(r + 3, c1, '______________________ / ' + _r('datum') + ' ________', { font: f(8.5, false, '444444') });
+  { // 0.14.0: every signer, three in a row
+    let list = signers(p).filter(s => s.name || s.sig); if (!list.length) list = ['tech', 'inspector', 'client'].map(x => signerNew(p, x));
+    for (let i = 0; i < list.length; i += 3) {
+      list.slice(i, i + 3).forEach((s, k) => { const c1 = [1, 9, 18][k];
+        ws.set(r, c1, signRoleR(s.role), { font: f(9, true, HS.navy) });
+        ws.set(r + 1, c1, [s.name, s.company].filter(Boolean).join(', '), { font: f(8.5) });
+        if (s.sig) ws.image(s.sig, r + 2, c1 + 1, 150, 45);
+        ws.set(r + 3, c1, s.sig ? [s.role === 'tech' ? '' : signStmtR(s.statement), tsNL(s.at)].filter(Boolean).join(' · ') : '______________________ / ' + _r('datum') + ' ________', { font: f(8.5, false, '444444') });
+      });
+      ws.height(r + 2, 36); if (i + 3 < list.length) r += 5;
+    }
   }
-  ws.set(r + 1, 1, [p.report.signName || p.info.technician, dateNL(p.info.date)].filter(Boolean).join(' · '), { font: f(8.5) });
-  if (p.report.signature) ws.image(p.report.signature, r + 2, 2, 150, 45);
-  ws.height(r + 2, 36);
 
   /* ---- 1b. Toelichtende nota: foreword, normative framework, way of working, conclusion ---- */
   {
@@ -645,7 +655,7 @@ async function buildXlsx(p) {
   for (const { it, r: x } of CLR.main) { clLine(r, it, x, it.scope === 'ahu' && CLR.units.length ? _r('zie aanvulling per luchtgroep') : ''); r++; }
   for (const u of CLR.units) {
     r++; grp(C, r, 1, 5, `▶ ${_r('Aanvulling luchtgroep {s}', { s: u.s.code })} ${u.s.name || ''}`.trim()); r++;
-    for (const { it, r: x } of u.rows) { clLine(r, it, x, it.key === 'wp' ? wpTextR(p, u.s) : ''); r++; }
+    for (const { it, r: x } of u.rows) { clLine(r, it, x, it.key === 'wp' ? wpNote(x, wpTextR(p, u.s)) : ''); r++; }
   }
   C.addList(`C${clFirst}:C${r}`, words);
   C.addCF(`C${clFirst}:C${r}`, 'equal', q2(RL.yes[1]), okDxf); C.addCF(`C${clFirst}:C${r}`, 'equal', q2(RL.yes[0]), badDxf);
@@ -766,14 +776,37 @@ async function buildPdf(p) {
   const logo = logoInfo();
   const blocks = noteBlocks(p);
   const imgs = await loadPhotos(blocks, 1400, p);
+  /* 0.14.0: every signer (technician, inspectors, installer, client …), three in a row; then the signing protocol */
+  const SIGBOX = []; // 0.15.3: where each signature goes (mm, from the top of the page): the server stamps signatures given by link there
   const sigs = () => {
-    ensure(26); const L = lay(); const gap = 8; const w = (L.W - 2 * M - 2 * gap) / 3;
-    [_r('Uitgevoerd door'), _r('Gecontroleerd'), _r('Aanvaard (klant)')].forEach((lab, i) => {
-      const x = M + i * (w + gap); font(8, 'bold', NAVY); doc.text(t(lab), x, y + 3);
-      if (i === 0) { font(7.4, 'normal', INK); doc.text(t([p.report.signName || p.info.technician, dateNL(p.info.date)].filter(Boolean).join(' · ')), x, y + 7); if (p.report.signature) { try { doc.addImage(p.report.signature, 'PNG', x, y + 8, 42, 12.6); } catch (e) { } } }
-      font(7.4, 'normal', [68, 68, 68]); doc.text(t('______________________ / ' + _r('datum') + ' ________'), x, y + 23);
-    });
-    y += 27;
+    let list = signers(p).filter(s => s.name || s.sig);
+    if (!list.length) list = ['tech', 'inspector', 'client'].map(r => signerNew(p, r));
+    const L = lay(); const gap = 8, per = 3; const w = (L.W - 2 * M - (per - 1) * gap) / per;
+    for (let i = 0; i < list.length; i += per) {
+      ensure(30);
+      list.slice(i, i + per).forEach((s, k) => {
+        const x = M + k * (w + gap); font(8, 'bold', NAVY); doc.text(doc.splitTextToSize(t(signRoleR(s.role)), w)[0], x, y + 3);
+        font(7.4, 'normal', INK); doc.text(doc.splitTextToSize(t([s.name, s.company].filter(Boolean).join(', ')), w)[0] || '', x, y + 7);
+        if (s.sig) { try { doc.addImage(s.sig, 'PNG', x, y + 8, 42, 12.6); } catch (e) { } }
+        else if (s.id) { const { W: pw, H: ph } = dims(); SIGBOX.push({ id: s.id, page: pageNo(), pw, ph, x, y: y + 8, w: 42, h: 12.6, ly: y + 24, lw: w }); }
+        font(7, 'normal', [68, 68, 68]);
+        doc.text(t(s.sig ? [s.role === 'tech' ? '' : signStmtR(s.statement), tsNL(s.at)].filter(Boolean).join(' · ') : '______________________ / ' + _r('datum') + ' ________'), x, y + 24);
+      });
+      y += 29;
+    }
+    const done = signers(p).filter(s => s.sig);
+    if (done.length && !sigs.proto) { sigs.proto = true; // the protocol once (the nota); the signatures themselves also close the inregelrapport
+      h3(_r('Ondertekeningsprotocol'), 20);
+      table({ head: [[_r('Hoedanigheid'), _r('Naam, firma'), _r('Wijze'), _r('Tijdstip'), _r('Bewijs')]],
+        body: done.map(s => { const q = s.req && s.req.status === 'signed' ? s.req : null;
+          return [signRoleR(s.role) + (s.role === 'tech' ? '' : '\n' + signStmtR(s.statement)), [s.name, s.company].filter(Boolean).join(', '),
+            q ? (q.method === 'account' ? _r('account + tweede factor') : q.method === 'sms' ? _r('link per e-mail + code per sms') : _r('link per e-mail + code')) : _r('op het toestel'), tsNL(s.at),
+            q ? (q.method === 'account' ? _r('aangemeld als {e}; IP {ip}; ondertekend document SHA-256 {h}', { e: maskMail(q.email), ip: q.ip || '-', h: q.docHash || '-' })
+              : q.method === 'sms' ? _r('link naar {e}, code per sms naar {p}; IP {ip}; ondertekend document SHA-256 {h}', { e: maskMail(q.email), p: q.phone || '-', ip: q.ip || '-', h: q.docHash || '-' })
+              : _r('code naar {e}; IP {ip}; ondertekend document SHA-256 {h}', { e: maskMail(q.email), ip: q.ip || '-', h: q.docHash || '-' })) : (s.dev ? _r('ondertekend op het toestel ({d})', { d: s.dev }) : _r('ondertekend op het toestel'))]; }),
+        columnStyles: { 0: { cellWidth: 30 }, 1: { cellWidth: 34 }, 2: { cellWidth: 24 }, 3: { cellWidth: 24 } } });
+      para(_r('Elektronische handtekeningen in de zin van eIDAS art. 25.1. Bij ondertekening op afstand kreeg de ondertekenaar het rapport als PDF; de vingerafdruk (SHA-256) van dat document staat hierboven. Tijdstippen in Belgische tijd.'), 6.8, MUTED, 'italic');
+    }
   };
 
   /* ---- p1 cover: logo · slogan, up to three photos, title block, four key figures, band with the company ---- */
@@ -822,25 +855,32 @@ async function buildPdf(p) {
     /* four key figures: design, measured after balancing, % of design, points within tolerance */
     const sumD = { T: 0, A: 0 }, sumQ = { T: 0, A: 0 }, sumQD = { T: 0, A: 0 }, nQ = { T: 0, A: 0 }, nT = { T: 0, A: 0 }; let okN = 0, measN = 0;
     for (const pt of p.points.filter(measurable)) {
-      const d = rowData(p, pt); if (d.d != null) { measN++; if (d.st === RL.stat.ok) okN++; }
+      const d = rowData(p, pt); if (ownQ(p, pt, 'controle') && d.d != null) { measN++; if (d.st === RL.stat.ok) okN++; }
       if (isEndFlow(p, pt) && sumD[pt.dir] != null) { nT[pt.dir]++; if (isNum(d.des)) sumD[pt.dir] += d.des; if (d.q2 != null && isNum(d.des)) { sumQ[pt.dir] += d.q2; sumQD[pt.dir] += d.des; nQ[pt.dir]++; } }
     }
     const desOf = (dir) => { const v = p.systems.reduce((a, s) => a + (isNum(s.design[dir]) ? s.design[dir] : 0), 0); return v || sumD[dir]; };
     const dirs = ['T', 'A'].filter(dir => desOf(dir) > 0 || nT[dir]);
     const pair = (f) => dirs.length ? dirs.map(f).join(' / ') + ' m³/h' : '—';
-    const qAll = dirs.reduce((a, dir) => a + sumQ[dir], 0), dAll = dirs.reduce((a, dir) => a + sumQD[dir], 0); const rAll = dAll > 0 && qAll > 0 ? qAll / dAll : null;
+    /* 0.13.3: the unit flow (measured at the unit) against the unit design; Σ eindorganen is a separate line, never mixed with the unit design */
+    const uDes = (dir) => p.systems.reduce((a, s) => a + (isNum(s.design[dir]) ? s.design[dir] : 0), 0);
+    const uQ = (dir) => { let v = 0, n = 0; for (const s of p.systems) { if (!isNum(s.design[dir])) continue; const q = systemQ(p, s, dir, 'controle') ?? mainDuctQ(p, s.id, dir, 'controle'); if (isNum(q)) { v += q; n++; } else return null; } return n ? v : null; };
+    const byUnit = dirs.length && dirs.every(dir => uDes(dir) > 0 && isNum(uQ(dir)));
+    const qAll = byUnit ? dirs.reduce((a, dir) => a + uQ(dir), 0) : dirs.reduce((a, dir) => a + sumQ[dir], 0), dAll = byUnit ? dirs.reduce((a, dir) => a + uDes(dir), 0) : dirs.reduce((a, dir) => a + sumQD[dir], 0); const rAll = dAll > 0 && qAll > 0 ? qAll / dAll : null;
     const tiles = [
-      [pair(dir => nl(desOf(dir))), dirs.length === 2 ? _r('ontwerp toevoer / afvoer') : dirs[0] === 'A' ? _r('ontwerp afvoer') : _r('ontwerp toevoer'), NAVY],
-      [dirs.some(dir => nQ[dir]) ? pair(dir => nQ[dir] ? nl(sumQ[dir]) : '—') : '—', _r('gemeten na inregelen'), NAVY],
+      [pair(dir => nl(byUnit ? uDes(dir) : desOf(dir))), byUnit ? (dirs.length === 2 ? _r('ontwerp luchtgroep PU / EX') : dirs[0] === 'A' ? _r('ontwerp luchtgroep EX') : _r('ontwerp luchtgroep PU')) : (dirs.length === 2 ? _r('ontwerp Σ eindorganen PU / EX') : _r('ontwerp Σ eindorganen')), NAVY],
+      [byUnit ? pair(dir => nl(Math.round(uQ(dir)))) : dirs.some(dir => nQ[dir]) ? pair(dir => nQ[dir] ? nl(sumQ[dir]) : '—') : '—', byUnit ? _r('luchtgroep na inregelen') : _r('Σ eindorganen na inregelen'), NAVY],
       [rAll != null ? nl(rAll * 100, 1) + ' %' : '—', _r('van het ontwerp'), rAll == null ? NAVY : inTol(rAll - 1, p.tol.system) ? rgb(HS.okT) : rgb(HS.badT)],
-      [measN ? `${okN} / ${measN}` : String(p.points.filter(measurable).length), measN ? _r('punten binnen ±{a} %', { a: nl(p.tol.terminal) }) : _r('meetpunten'), measN && okN < measN ? rgb(HS.badT) : NAVY],
+      [measN ? `${okN} / ${measN}` : String(p.points.filter(measurable).length), measN ? _r('gemeten punten ±{a} %', { a: nl(p.tol.terminal) }) : _r('meetpunten'), measN && okN < measN ? rgb(HS.badT) : NAVY],
     ];
+    const sigmaLine = byUnit && dirs.some(dir => nT[dir]) ? _r('Σ eindorganen: ontwerp {d} · na inregelen {q}', { d: pair(dir => nl(sumD[dir])), q: dirs.some(dir => nQ[dir]) ? pair(dir => nQ[dir] ? nl(sumQ[dir]) : '—') : '—' })
+      + (sumQD.T + sumQD.A > 0 && sumQ.T + sumQ.A > 0 ? ` (${nl((sumQ.T + sumQ.A) / (sumQD.T + sumQD.A) * 100, 1)} %)` : '') + ' — ' + _r('zie «Luchtgroepen»') : '';
     const TY = 232, TH = 18, TG = 3, TW = (CW - 3 * TG) / 4;
     tiles.forEach(([v, l, col], i) => {
       const x = X + i * (TW + TG); doc.setFillColor(...LGREY); doc.roundedRect(x, TY, TW, TH, 2, 2, 'F');
       let fs = 13; font(fs, 'bold', col); while (doc.getTextWidth(t(v)) > TW - 7 && fs > 7.5) { fs -= 0.5; font(fs, 'bold', col); }
       doc.text(t(v), x + 3.5, TY + 8); font(6.8, 'normal', MUTED); doc.text(doc.splitTextToSize(t(l), TW - 7)[0], x + 3.5, TY + 13.6);
     });
+    if (sigmaLine) { font(7, 'normal', MUTED); doc.text(doc.splitTextToSize(t(sigmaLine), CW)[0], X, TY + TH + 4.2); }
     /* band: company, address, footer · edition, documents · made with Inregelaar */
     const BT = H - 37; doc.setFillColor(...BAR); doc.rect(0, BT - 1, W, 1, 'F'); doc.setFillColor(...NAVY); doc.rect(0, BT, W, 37, 'F');
     const firm = p.info.company || Settings.v.company || '';
@@ -887,7 +927,7 @@ async function buildPdf(p) {
   const cones = p.systems.filter(s2 => s2.np && s2.np.flowM === 'cone');
   if (cones.some(s2 => s2.np.kcF !== 'rho')) para(_r('• Totaaldebiet aan de ventilator: Q = k·√Δp met Δp de conusdruk en k de k-factor uit de documentatie van de luchtgroep.'));
   if (cones.some(s2 => s2.np.kcF === 'rho')) para(_r('• Totaaldebiet aan de ventilator ({list}): Q = k·√(2·Δp/ρ) met Δp de conusdruk, k de k-factor in m² uit de documentatie van de luchtgroep en ρ = {rho} kg/m³; Q in m³/s, in het rapport in m³/h.', { list: cones.filter(s2 => s2.np.kcF === 'rho').map(s2 => s2.code).join(', '), rho: nl(rhoOf(p), 2) }));
-  { const mu = methodsUse(p); if (mu.length) para(_r('• Meettoestellen per meetwijze: {list}.', { list: mu.map(x => `${RL.method[x.m] || x.m}: ${x.ins.length ? x.ins.map(insLabelR).join('; ') : '-'}`).join(' · ') })); }
+  { const mu = methodsUse(p); if (mu.length) para(_r('• Meettoestellen per meetwijze: {list}.', { list: mu.map(x => `${RL.method[x.m] || x.m}: ${x.ins.length ? x.ins.map(insLabelR).join('; ') : x.m === 'readout' ? _r('uitlezing van de regelaar (geen meettoestel)') : _r('geen meettoestel opgegeven')}`).join(' · ') })); }
   if (p.points.some(x => x.parentId)) para(_r('• Hiërarchie master / slave: een master (CAV/VAV, iris- of registerklep van een tak) voedt één of meer slaves; een slave kan zelf master zijn van een subtak of van roosters. Het debiet van een master zonder eigen meting is de som van zijn slaves (cursief in het rapport).'));
   const PGn = pressureGroups(p);
   if (PGn.length) para(_r('• Statische kanaaldruk vóór elk knooppunt en bij de verste eindorganen, met open kleppen en na inregeling. Het punt met de laagste druk is de drukindex van het systeem (zwaarst belaste pad); Δp tussen master en slave toont het verlies per tak. Zie hoofdstuk «Kanaaldrukken».'));
@@ -899,7 +939,7 @@ async function buildPdf(p) {
     for (const s of e.units) for (const dir of unitDirs(s)) {
       const qd = s.design[dir]; if (!isNum(qd)) continue;
       const q1 = systemQ(p, s, dir, 'eerste') ?? mainDuctQ(p, s.id, dir, 'eerste'), q2 = systemQ(p, s, dir, 'controle') ?? mainDuctQ(p, s.id, dir, 'controle'); const d = devOf(q2, qd);
-      const tp = p.points.filter(x => x.systemId === s.id && x.dir === dir && measurable(x));
+      const tp = p.points.filter(x => x.systemId === s.id && x.dir === dir && measurable(x) && ownQ(p, x, 'controle'));
       sumBody.push([`${s.code} ${s.name || ''}`.trim() + (e.g ? ` (${RLab().role[roleOf(p, s.id)]})` : ''), RL.peLong[dir], n0(qd), n0(q1 && Math.round(q1)), n0(q2 && Math.round(q2)), dv(d), st(d, p.tol.system), `${tp.filter(x => ptStatus(x, p) === 'ok').length} / ${tp.length}`]);
     }
     if (e.g) { const SB = { fillColor: GREY, fontStyle: 'bold', textColor: NAVY }; const tp = p.points.filter(x => e.units.some(u => u.id === x.systemId) && measurable(x));
@@ -908,9 +948,13 @@ async function buildPdf(p) {
   }
   table({ head: [[_r('Luchtgroep'), _r('Zijde'), _r('Ontwerp m³/h'), _r('Eerste meting'), _r('Controlemeting'), _r('Afwijking'), _r('Status'), _r('Punten OK')]], body: sumBody.length ? sumBody : [['-', '', '', '', '', '', '', '']], columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'center' }, 7: { halign: 'right' } }, didParseCell: statusCell(6) });
   const meas = p.points.filter(measurable), done = meas.filter(x => isNum(calcQ(x, 'controle', p).q)), nok = done.filter(x => ptStatus(x, p) === 'nok');
-  para(_r('Van de {n} meetpunten zijn er {d} gecontroleerd; {ok} liggen binnen de tolerantie.', { n: meas.length, d: done.length, ok: done.length - nok.length }) + (nok.length ? ' ' + _r('Buiten tolerantie: {list}.', { list: nok.map(x => x.code).join(', ') }) : ''));
+  { const so = sumOnly(p, meas, 'controle'); const n = meas.length - so.length;
+    para((done.length === n ? _r('Alle {n} meetpunten met een eigen meting zijn gecontroleerd; {ok} liggen binnen de tolerantie.', { n, ok: done.length - nok.length }) : _r('Van de {n} meetpunten met een eigen meting zijn er {d} gecontroleerd; {ok} liggen binnen de tolerantie.', { n, d: done.length, ok: done.length - nok.length }))
+      + (nok.length ? ' ' + _r('Buiten tolerantie: {list}.', { list: nok.map(x => x.code).join(', ') }) : '')
+      + (so.length ? ' ' + _r('{n} knooppunt(en) zonder eigen meting tellen als som van hun slaves (Σ in het inregelrapport).', { n: so.length }) : '')); }
   const stp = meas.filter(x => x.status); if (stp.length) para(_r('Met een status (niet gemeten zoals voorzien): {list}.', { list: stp.map(x => `${x.code} (${RL.status[x.status].toLowerCase()})`).join(', ') }));
-  { const rt = roomText(p); if (rt) { para(rt); const rows = roomSums(p).filter(x => x.pts.length > 1 || x.ok === false);
+  { const rt = roomText(p); if (rt) { const rows = roomSums(p).filter(x => x.pts.length > 1 || x.ok === false);
+    para(rt + (rows.length && rows.length < roomSums(p).length ? ' ' + _r('In de tabel: de ruimten met meer dan één eindapparaat of buiten tolerantie.') : ''));
     if (rows.length) table({ head: [[_r('Ruimte / zone'), _r('Zijde'), _r('Eindapparaten'), _r('Ontwerp m³/h'), _r('Controlemeting'), _r('Afwijking'), _r('Status')]],
       body: rows.map(x => [x.room, RL.pe[x.dir], x.pts.map(q => q.code).join(', '), n0(x.nD ? Math.round(x.d) : null), n0(x.nQ ? Math.round(x.q) : null), x.dev == null ? '-' : dv(x.dev), x.dev == null ? _r('onvolledig') : x.ok ? RL.stat.ok : RL.stat.nok]),
       columnStyles: { 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } } }); } }
@@ -926,7 +970,7 @@ async function buildPdf(p) {
   h2(_r('6. Checklist inbedrijfstelling'));
   { const c = clCounts(p, { building: true }); para(_r('{a} stappen uitgevoerd, {b} niet uitgevoerd, {c} niet van toepassing, {d} niet ingevuld — zie hoofdstuk «Checklist inbedrijfstelling».', { a: c.ja, b: c.nee, c: c.nvt, d: c.open })); }
   h2(_r('7. Conclusie')); para(p.report.conclusion || '-');
-  h2(_r('8. Opmerkingen')); para(p.report.remarks || '-');
+  h2(_r('8. Opmerkingen')); para(p.report.remarks || _r('Geen bijzondere opmerkingen.'));
   if (blocks.some(b => b.photos.length || b.ref)) para(_r("Opmerkingen en foto's per pagina en per meetpunt: zie hoofdstuk «Opmerkingen en foto's»."), 7.8, MUTED, 'italic');
   y += 4; sigs();
 
@@ -935,6 +979,25 @@ async function buildPdf(p) {
   ptitle(_r('Luchtgroepen — controle toestellen'), projLine);
   const H7 = [[_r('Parameter'), _r('Eenheid'), _r('Ontwerp'), _r('Eerste meting'), _r('Controlemeting'), _r('Afwijking'), _r('Status')]];
   const v0 = (x, fm) => x === '' || x == null ? '' : typeof x === 'number' ? nl(x, fm === '0.00' ? 2 : fm === '0.0' ? 1 : 0) : String(x);
+  const NG = () => ({ content: _r('niet gemeten'), colSpan: 2, styles: { halign: 'center', textColor: MUTED, fontStyle: 'italic' } });
+  /** 0.13.3: why the unit flow and Σ eindorganen differ, with the figures of this unit */
+  const unitSigmaText = (units) => { // the units of one entry: a system of parallel units is compared as a whole
+    const parts = []; const ids = new Set(units.map(s => s.id)); const pc = (r) => (r >= 0 ? '+' : '') + nl(r * 100, 1) + ' %';
+    for (const dir of ['T', 'A']) {
+      const us = units.filter(s => unitDirs(s).includes(dir)); if (!us.length) continue;
+      const qd = us.every(s => isNum(s.design[dir])) ? us.reduce((a, s) => a + s.design[dir], 0) : null;
+      const sd = us.reduce((a, s) => a + (sumDesign(p, s.id, dir) || 0), 0);
+      const qs = us.map(s => systemQ(p, s, dir, 'controle') ?? mainDuctQ(p, s.id, dir, 'controle')); const q = qs.every(isNum) ? qs.reduce((a, v) => a + v, 0) : null;
+      let b = 0, nb = 0; for (const pt of p.points) if (ids.has(pt.systemId) && pt.dir === dir && isEndFlow(p, pt)) { const d = rowData(p, pt); if (d.q2 != null) { b += d.q2; nb++; } }
+      const rd = isNum(qd) && qd > 0 && sd > 0 ? sd / qd - 1 : null, rq = isNum(q) && q > 0 && nb ? b / q - 1 : null;
+      if ((rd == null || Math.abs(rd) < 0.02) && (rq == null || Math.abs(rq) < 0.03)) continue;
+      parts.push(_r('{dir}: ontwerp luchtgroep {qd} m³/h, Σ eindorganen {sd} m³/h{rd}', { dir: RL.dir[dir], qd: isNum(qd) ? nl(qd) : '—', sd: sd ? nl(sd) : '—', rd: rd == null ? '' : ` (${pc(rd)})` })
+        + (isNum(q) || nb ? _r('; na inregelen luchtgroep {q} m³/h, Σ eindorganen {b} m³/h{rq}', { q: isNum(q) ? nl(Math.round(q)) : '—', b: nb ? nl(b) : '—', rq: rq == null ? '' : ` (${pc(rq)})` }) : ''));
+    }
+    if (!parts.length) return '';
+    const how = [...new Set(units.map(s => flowMethodText(s)).filter(Boolean))].join(', ');
+    return _r('Debiet luchtgroep en Σ eindorganen. Het debiet van de luchtgroep wordt aan het toestel bepaald{how}; Σ eindorganen is de som van de metingen aan de eindorganen (kap, k-factor, anemometer, regelaar). {list}. Een verschil van enkele procenten is normaal: elke meetmethode heeft haar eigen meetonzekerheid (NBN EN 12599) en kanaallekken verminderen het debiet aan de eindorganen. Een ontwerpsom van de eindorganen die afwijkt van het ontwerpdebiet van de luchtgroep komt uit de ontwerpdocumenten (gelijktijdigheid, afronding) en wordt best met de ontwerper bevestigd.', { how: how ? ' (' + how + ')' : '', list: parts.join('; ') });
+  };
   for (const e of sysEntries(p)) {
     if (e.g) {
       h2(`${_r('Systeem')} ${entryCode(e)} — ${RLab().link[e.g.link]}${e.g.name ? ' — ' + e.g.name : ''}`);
@@ -949,10 +1012,11 @@ async function buildPdf(p) {
     const body = [];
     for (const [key, name, unit, dec] of [['q', _r('Debiet'), 'm³/h', 0], ['pa', _r('Externe druk'), 'Pa', 0], ['f', _r('Drukval filter'), 'Pa', 0]]) for (const dir of unitDirs(s)) {
       const e1 = key === 'q' ? systemQ(p, s, dir, 'eerste') : s.meas.eerste?.[key + dir], c = key === 'q' ? systemQ(p, s, dir, 'controle') : s.meas.controle?.[key + dir]; const d = key === 'q' ? devOf(c, s.design[dir]) : null;
-      body.push([`${name} ${RL.dir[dir].toLowerCase()}`, unit, key === 'q' ? n0(s.design[dir]) : '', isNum(e1) ? nl(e1, dec) : '', isNum(c) ? nl(c, dec) : '', key === 'q' ? dv(d) : '', key === 'q' ? st(d, p.tol.system) : '']);
+      body.push(isNum(e1) || isNum(c) ? [`${name} ${RL.dir[dir].toLowerCase()}`, unit, key === 'q' ? n0(s.design[dir]) : '', isNum(e1) ? nl(e1, dec) : '', isNum(c) ? nl(c, dec) : '', key === 'q' ? dv(d) : '', key === 'q' ? st(d, p.tol.system) : '']
+        : [`${name} ${RL.dir[dir].toLowerCase()}`, unit, key === 'q' ? n0(s.design[dir]) : '', NG(), '', '']);
     }
     const fr = fanRowsR(p, s);
-    for (const rw of fr) body.push([rw.name, rw.unit, v0(rw.d, rw.fm), v0(rw.e, rw.fm), v0(rw.c, rw.fm), rw.dev || '', rw.st || '']);
+    for (const rw of fr) body.push(v0(rw.e, rw.fm) === '' && v0(rw.c, rw.fm) === '' ? [rw.name, rw.unit, v0(rw.d, rw.fm), NG(), rw.dev || '', rw.st || ''] : [rw.name, rw.unit, v0(rw.d, rw.fm), v0(rw.e, rw.fm), v0(rw.c, rw.fm), rw.dev || '', rw.st || '']);
     for (const dir of unitDirs(s)) {
       const sd = sumDesign(p, s.id, dir); let a = 0, na = 0, b = 0, nb = 0;
       for (const pt of p.points) if (pt.systemId === s.id && pt.dir === dir && isEndFlow(p, pt)) { const d = rowData(p, pt); if (d.q1 != null) { a += d.q1; na++; } if (d.q2 != null) { b += d.q2; nb++; } }
@@ -962,6 +1026,7 @@ async function buildPdf(p) {
     table({ head: [[_r('Parameter'), _r('Eenheid'), _r('Ontwerp'), _r('Eerste meting'), _r('Controlemeting'), _r('Afwijking'), _r('Status')]], body, columnStyles: { 0: { cellWidth: 62 }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'center' } }, didParseCell: statusCell(6) });
     const det = (s.fans || []).filter(f => fanDetailR(f)).map(f => `${fanName(s, f)}: ${fanDetailR(f)}`); if (det.length) para(det.join('\n'), 7, MUTED);
     }
+    { const ex = unitSigmaText(e.units); if (ex) para(ex, 7.4, MUTED, 'italic'); }
   }
 
   /* ---- inregelrapport (landscape) ---- */
@@ -1189,14 +1254,21 @@ async function buildPdf(p) {
     const done = sameOrNew(SEC.bk, !ducts.length && !PGn.length && !regs.length && !ctlE.length);
     ptitle(_r('BRAND-, AFSLUIT- EN TERUGSLAGKLEPPEN'), _r('Kleppen op het kanaal, per luchtgroep en verdieping / zone. Stand = tijdens de metingen; een gesloten of defecte klep maakt de meetpunten erachter niet representatief.'));
     const bad = [RL.state.dicht, RL.cond.defect, RL.chk.nok], good = [RL.state.open, RL.cond.ok, RL.chk.ok];
-    table({
-      head: [[_r('Luchtgroep · zone'), _r('Code'), _r('Lokaal'), _r('Type'), _r('Grens (van → naar)'), _r('EI-klasse'), _r('Bediening'), _r('Stand'), _r('Toestand'), _r('Inspectieluik'), _r('Functionele test'), _r('Signaal GBS / brandcentrale'), _r('Meetpunten erachter'), _r('Opmerking')]],
-      body: lds.map(d => { const fd = d.fd || {}; const isB = d.reg.type === 'brand'; const n = behind(p, d).length;
+    /* 0.13.3: columns without any value are left out; the rest get room, so words are not broken */
+    const BKC = [[_r('Luchtgroep · zone'), 26, 'left'], [_r('Code'), 20, 'left', 'bold'], [_r('Lokaal'), 24, 'left'], [_r('Type'), 25, 'left'], [_r('Grens (van → naar)'), 27, 'left'], [_r('EI-klasse'), 15, 'left'], [_r('Bediening'), 26, 'left'],
+      [_r('Stand'), 14, 'center', 0, 1], [_r('Toestand'), 15, 'center', 0, 1], [_r('Inspectieluik'), 18, 'center', 0, 1], [_r('Functionele test'), 18, 'center', 0, 1], [_r('Signaal GBS / brandcentrale'), 20, 'center', 0, 1], [_r('Meetpunten erachter'), 18, 'right'], [_r('Opmerking'), null, 'left']];
+    const bkRows = lds.map(d => { const fd = d.fd || {}; const isB = d.reg.type === 'brand'; const n = behind(p, d).length;
         return [[sysOf(p, d.systemId)?.code || '', d.zone].filter(Boolean).join(' · '), d.code, d.room, [RL.reg[d.reg.type], d.reg.model].filter(Boolean).join(' · '), isB ? [fdBoundary(d), RL.pass[fd.pass || ''] || ''].filter(Boolean).join(' · ') : '', isB ? fd.ei || '' : '', [RL.act[fd.act || ''] || '', fd.act && fd.act !== 'smelt' && fd.sw ? _r('eindeloopcontacten') : ''].filter(Boolean).join(' · '),
-          d.reg.state ? RL.state[d.reg.state] || '' : '', d.reg.cond ? RL.cond[d.reg.cond] : '', RL.chk[fd.hatch || ''] || '', RL.chk[fd.test || ''] || '', RL.chk[fd.sig || ''] || '', n ? String(n) : '', [d.status ? RL.status[d.status] : '', fd.tby ? _r('test: {t}', { t: fd.tby }) : '', d.note].filter(Boolean).join(' · ')]; }),
+          d.reg.state ? RL.state[d.reg.state] || '' : '', d.reg.cond ? RL.cond[d.reg.cond] : '', RL.chk[fd.hatch || ''] || '', RL.chk[fd.test || ''] || '', RL.chk[fd.sig || ''] || '', n ? String(n) : '', [d.status ? RL.status[d.status] : '', fd.tby ? _r('test: {t}', { t: fd.tby }) : '', d.note].filter(Boolean).join(' · ')]; });
+    const keep = BKC.map((c, i) => i < 4 || i === 7 || bkRows.some(r => String(r[i] ?? '').trim()));
+    const bkCols = BKC.filter((c, i) => keep[i]);
+    const free = 269 - bkCols.reduce((a, c) => a + (c[1] || 0), 0); const grow = free > 30 ? (free - 30) / bkCols.filter(c => c[1] && c[2] === 'left').length : 0;
+    table({
+      head: [bkCols.map(c => c[0])],
+      body: bkRows.map(r => r.filter((v, i) => keep[i])),
       styles: { font: FONT, fontSize: 6.8, cellPadding: { top: 0.9, bottom: 0.9, left: 1.1, right: 1.1 }, textColor: INK, lineColor: LINE, lineWidth: { bottom: 0.2 }, valign: 'middle' },
-      columnStyles: { 0: { cellWidth: 16 }, 1: { fontStyle: 'bold', cellWidth: 12 }, 2: { cellWidth: 21 }, 3: { cellWidth: 25 }, 4: { cellWidth: 27 }, 5: { cellWidth: 12 }, 6: { cellWidth: 22 }, 7: { halign: 'center', cellWidth: 15 }, 8: { halign: 'center', cellWidth: 15 }, 9: { halign: 'center', cellWidth: 16 }, 10: { halign: 'center', cellWidth: 18 }, 11: { halign: 'center', cellWidth: 18 }, 12: { halign: 'right', cellWidth: 13 } },
-      didParseCell: (c) => { if (c.section !== 'body' || c.column.index < 7 || c.column.index > 11) return; const v = String(c.cell.raw ?? ''); if (!v) return;
+      columnStyles: Object.fromEntries(bkCols.map((c, i) => [i, Object.assign({ halign: c[2] }, c[1] ? { cellWidth: c[1] + (c[2] === 'left' ? grow : 0) } : {}, c[3] ? { fontStyle: c[3] } : {})])),
+      didParseCell: (c) => { if (c.section !== 'body' || !bkCols[c.column.index]?.[4]) return; const v = String(c.cell.raw ?? ''); if (!v) return;
         if (bad.includes(v)) Object.assign(c.cell.styles, { fillColor: rgb(HS.badF), textColor: rgb(HS.badT), fontStyle: 'bold' }); else if (good.includes(v)) Object.assign(c.cell.styles, { textColor: rgb(HS.okT), fontStyle: 'bold' }); },
     });
     done();
@@ -1208,7 +1280,7 @@ async function buildPdf(p) {
     ptitle(_r('CHECKLIST INBEDRIJFSTELLING'), _r('Uitgevoerd per stap · * = automatisch ingevuld uit de metingen en instellingen · per luchtgroep: aanvulling onder de tabel'));
     const CLR = clRows(p, { building: true }); const cc = { ja: 0, nee: 0, nvt: 0, open: 0 }; for (const x of CLR.main) cc[x.r.v || 'open']++;
     chips([{ text: `${RL.yes[1]} ${cc.ja}`, fill: rgb(HS.okF), ink: rgb(HS.okT), b: true }, { text: `${RL.yes[0]} ${cc.nee}`, fill: rgb(HS.badF), ink: rgb(HS.badT), b: true }, { text: `${_r('n.v.t.')} ${cc.nvt}` }, { text: `${_r('niet ingevuld')} ${cc.open}`, ink: MUTED }]);
-    const clBody = (rows, extra) => rows.map(({ it, r: x }) => [String(it.n), _r(it.nl), clWord(x.v) + (x.src === 'auto' ? ' *' : ''), [x.note, extra ? extra(it) : ''].filter(Boolean).join(' · ')]);
+    const clBody = (rows, extra) => rows.map(({ it, r: x }) => [String(it.n), _r(it.nl), clWord(x.v) + (x.src === 'auto' ? ' *' : ''), [x.note, extra ? extra(it, x) : ''].filter(Boolean).join(' · ')]);
     const clCell = (d) => {
       if (d.section !== 'body' || d.column.index !== 2) return; const v = String(d.cell.raw ?? '');
       const k = v.startsWith(RL.yes[1]) ? 'ok' : v.startsWith(RL.yes[0]) ? 'bad' : null;
@@ -1220,7 +1292,7 @@ async function buildPdf(p) {
     table({ head: [[_r('Nr.'), _r('Stap / handeling'), _r('Uitgevoerd'), _r('Opmerking')]], body: clBody(CLR.main, (it) => it.scope === 'ahu' && CLR.units.length ? _r('zie aanvulling per luchtgroep') : ''), columnStyles: cols, didParseCell: clCell });
     for (const u of CLR.units) {
       h3(_r('Aanvulling luchtgroep {s}', { s: u.s.code }) + (u.s.name ? ' — ' + u.s.name : ''), 18);
-      table({ head: [[_r('Nr.'), _r('Stap / handeling'), _r('Uitgevoerd'), _r('Opmerking')]], body: clBody(u.rows, (it) => it.key === 'wp' ? wpTextR(p, u.s) : ''), columnStyles: cols, didParseCell: clCell });
+      table({ head: [[_r('Nr.'), _r('Stap / handeling'), _r('Uitgevoerd'), _r('Opmerking')]], body: clBody(u.rows, (it, x) => it.key === 'wp' ? wpNote(x, wpTextR(p, u.s)) : ''), columnStyles: cols, didParseCell: clCell });
     }
     para(_r('Handtekening technicus: {n}        Datum: {d}', { n: p.report.signName || p.info.technician || '-', d: dateNL(p.info.date) || '-' }), 8, INK);
   }
@@ -1342,7 +1414,11 @@ async function buildPdf(p) {
     font(10.5, 'bold', NAVY); doc.text(t(sec), M, y + 3.5); const tw = doc.getTextWidth(t(sec));
     const pn = String(secStart[sec]); const pw = doc.getTextWidth(pn); doc.text(pn, 210 - M, y + 3.5, { align: 'right' });
     doc.setDrawColor(136, 136, 136); doc.setLineWidth(0.3); doc.setLineDashPattern([0.3, 0.9], 0); doc.line(M + tw + 1.6, y + 3.2, 210 - M - pw - 1.6, y + 3.2); doc.setLineDashPattern([], 0);
-    font(7.9, 'normal', [51, 51, 51]); doc.text(t(sub), M + 5, y + 8.4); y += 14;
+    font(7.9, 'normal', [51, 51, 51]); doc.text(t(sub), M + 5, y + 8.4);
+    /* 0.13.3: the line opens its chapter; the chapters are also bookmarks of the PDF */
+    try { doc.link(M, y - 0.5, 210 - 2 * M, 11, { pageNumber: secStart[sec] }); } catch (e) { }
+    try { if (doc.outline) doc.outline.add(null, t(sec), { pageNumber: secStart[sec] }); } catch (e) { }
+    y += 14;
   }
   {
     const nh = 18, ny = 297 - 16 - 3 - nh; doc.setFillColor(...LGREY); doc.rect(M, ny, 210 - 2 * M, nh, 'F'); doc.setFillColor(...BAR); doc.rect(M, ny, 1.6, nh, 'F');
@@ -1377,7 +1453,7 @@ async function buildPdf(p) {
     font(6.5, 'bold', ORANGE); doc.text(t('DEMO · Ventilation Setup Tool ' + APP_VERSION), M, H - 3);
   }
   doc.setProperties({ title: t(`Air Balancing Report ${projLine}`), author: t(p.info.company || ''), creator: 'Ventilation Setup Tool ' + APP_VERSION });
-  return doc.output('blob');
+  const out = doc.output('blob'); out.sigBoxes = SIGBOX; return out;
 }
 
 /* ================================================================== import template */

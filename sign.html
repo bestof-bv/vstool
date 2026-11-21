@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src https://trhzjawcwxojqewfhaiw.supabase.co; frame-src https://trhzjawcwxojqewfhaiw.supabase.co blob:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>Ondertekenen · Ventilation Setup Tool</title>
+<style>
+:root { --bg: #F4F6F7; --surface: #fff; --surface-2: #F4F8F7; --fg: #12202A; --muted: #5B6B73; --line: #DCE4E3; --brand: #0F3D3E; --accent: #1E7A55; --bad: #B3261E; --bad-soft: #FBE9E7; --ok-soft: #E3F2EA; }
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+header { background: var(--brand); color: #fff; padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px; }
+header .in, main { max-width: 760px; margin: 0 auto; }
+header b { font-size: 17px; } header span { display: block; font-size: 13px; opacity: .8; }
+main { padding: 16px 16px 40px; display: grid; gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 10px; min-width: 0; overflow-wrap: anywhere; }
+h1 { font-size: 20px; margin: 0; line-height: 1.25; } h2 { font-size: 16px; margin: 0; }
+.muted { color: var(--muted); } .small { font-size: 13px; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 14px; } .kv dt { color: var(--muted); } .kv dd { margin: 0; }
+.btn { appearance: none; border: 1px solid var(--line); background: var(--surface); color: var(--fg); border-radius: 10px; min-height: 44px; padding: 10px 16px; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; } .btn:disabled { opacity: .5; cursor: default; }
+.btn.link { border: 0; background: none; color: var(--muted); font-weight: 500; min-height: 36px; padding: 6px 0; text-decoration: underline; justify-content: flex-start; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+label.f { display: grid; gap: 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
+input[type=text], input[inputmode=numeric], textarea { font: inherit; font-size: 16px; color: var(--fg); background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%; }
+input.code { letter-spacing: .4em; font-size: 22px; text-align: center; max-width: 220px; }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; } .check input { width: 22px; height: 22px; margin: 1px 0 0; flex: none; accent-color: var(--brand); }
+.pad { position: relative; border: 1px dashed var(--muted); border-radius: 12px; background: var(--surface-2); aspect-ratio: 10 / 3; touch-action: none; }
+.pad canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+.pad .ln { position: absolute; left: 6%; right: 6%; bottom: 22%; border-bottom: 1px solid var(--line); pointer-events: none; }
+.pad .hint { position: absolute; left: 0; right: 0; top: 40%; text-align: center; color: var(--muted); pointer-events: none; font-size: 14px; }
+.banner { border-radius: 10px; padding: 10px 12px; font-size: 14px; } .banner.bad { background: var(--bad-soft); color: var(--bad); } .banner.ok { background: var(--ok-soft); color: #14532D; } .banner.info { background: #EEF4F4; border: 1px solid #D6E2E2; }
+iframe.pdf { width: 100%; height: 70vh; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.hash { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; word-break: break-all; color: var(--muted); }
+[hidden] { display: none !important; }
+footer { text-align: center; font-size: 12px; color: var(--muted); padding: 0 16px 24px; }
+</style>
+</head>
+<body>
+<header><div class="in"><b id="hd">Ventilation Setup Tool</b><span id="hd2"></span></div></header>
+<main id="m"><div class="card"><p class="muted">…</p></div></main>
+<footer id="ft"></footer>
+<script>
+'use strict';
+(function () {
+  const API = 'https://trhzjawcwxojqewfhaiw.supabase.co/functions/v1/sign', KEY = 'sb_publishable_UVL5oXOL7yu8s1FKDhMoxg_qcl1DoM_';
+  const tok = decodeURIComponent((location.hash || '').slice(1)).trim();
+  // the token stays out of the address bar (history, screenshots) once read
+  try { history.replaceState(null, '', location.pathname); } catch (e) { }
+  const T = {
+    nl: { title: 'Ondertekenen', doc: 'Document', project: 'Project', from: 'Gevraagd door', you: 'Ondertekenaar', role: 'Hoedanigheid', open: 'Rapport (PDF) openen', size: 'Vingerafdruk van het document (SHA-256)',
+      akkoord: 'Ik heb het inregelrapport gelezen en ga akkoord met de vastgestelde waarden en opmerkingen.', kennisname: 'Ik heb kennis genomen van het inregelrapport (voor kennisname, zonder akkoord over de inhoud).',
+      name: 'Uw naam', sig: 'Uw handtekening', sigHint: 'Teken hier met de vinger of de muis', clear: 'Wissen', getCode: 'Code sturen naar {m}', codeSent: 'Code gestuurd naar {m}. Hij is {n} minuten geldig.', code: 'Code uit de e-mail', sign: 'Ondertekenen',
+      again: 'Nieuwe code', decline: 'Niet ondertekenen…', reason: 'Reden (de aanvrager krijgt die te zien)', declineGo: 'Ondertekening weigeren', cancel: 'Annuleren',
+      done: 'Ondertekend op {d}. U krijgt een bevestiging per e-mail.', proof: 'Bewijs van ondertekening', when: 'Tijdstip', stmt: 'Verklaring', ip: 'IP-adres', dl: 'Rapport (PDF) downloaden', dlS: 'Ondertekend rapport (PDF) downloaden', dlSn: 'Met de handtekeningen die tot nu toe zijn gezet, op een laatste pagina die de server toevoegt.', keep: 'Deze pagina en het rapport blijven {n} dagen na de ondertekening beschikbaar via de link in uw e-mail.', declined: 'U heeft geweigerd te ondertekenen. De aanvrager is verwittigd.', revoked: 'Deze vraag is ingetrokken of vervangen door een nieuwe link.', expired: 'Deze link is verlopen. Vraag de aanvrager om een nieuwe.', token: 'Deze link is ongeldig.', net: 'Geen verbinding met de server. Probeer opnieuw.',
+      e_code: 'De code klopt niet (nog {n} pogingen).', e_code_expired: 'De code is verlopen: vraag een nieuwe.', e_too_many: 'Te veel pogingen. Vraag de aanvrager om een nieuwe link.', e_wait: 'Wacht even voor u een nieuwe code vraagt.', e_mail: 'De e-mail kon niet verstuurd worden. Probeer later opnieuw.', e_name: 'Vul uw naam in.', e_sig: 'Plaats uw handtekening.', e_accept: 'Vink de verklaring aan.',
+      legal: 'Elektronische handtekening (eIDAS art. 25.1). Bewaard worden: tijdstip, IP-adres, browser, e-mailadres van de code en de vingerafdruk van het document.',
+      roles: { tech: 'Inregeltechnicus', inspector: 'Controleur', installer: 'Installateur (oplevering)', client: 'Opdrachtgever / klant', other: 'Ondertekenaar' } },
+    fr: { title: 'Signer', doc: 'Document', project: 'Projet', from: 'Demandé par', you: 'Signataire', role: 'Qualité', open: 'Ouvrir le rapport (PDF)', size: 'Empreinte du document (SHA-256)',
+      akkoord: "J'ai lu le rapport d'équilibrage et je marque mon accord sur les valeurs constatées et les remarques.", kennisname: "J'ai pris connaissance du rapport d'équilibrage (pour prise de connaissance, sans accord sur le contenu).",
+      name: 'Votre nom', sig: 'Votre signature', sigHint: 'Signez ici avec le doigt ou la souris', clear: 'Effacer', getCode: 'Envoyer un code à {m}', codeSent: 'Code envoyé à {m}. Il est valable {n} minutes.', code: "Code de l'e-mail", sign: 'Signer',
+      again: 'Nouveau code', decline: 'Ne pas signer…', reason: 'Motif (visible par le demandeur)', declineGo: 'Refuser de signer', cancel: 'Annuler',
+      done: 'Signé le {d}. Vous recevez une confirmation par e-mail.', proof: 'Preuve de signature', when: 'Moment', stmt: 'Déclaration', ip: 'Adresse IP', dl: 'Télécharger le rapport (PDF)', dlS: 'Télécharger le rapport signé (PDF)', dlSn: 'Avec les signatures données jusqu\'ici, sur une dernière page ajoutée par le serveur.', keep: 'Cette page et le rapport restent disponibles {n} jours après la signature via le lien de votre e-mail.', declined: 'Vous avez refusé de signer. Le demandeur est averti.', revoked: 'Cette demande a été retirée ou remplacée par un nouveau lien.', expired: 'Ce lien a expiré. Demandez-en un nouveau.', token: "Ce lien n'est pas valable.", net: 'Pas de connexion avec le serveur. Réessayez.',
+      e_code: 'Code incorrect (encore {n} essais).', e_code_expired: 'Le code a expiré : demandez-en un nouveau.', e_too_many: 'Trop de tentatives. Demandez un nouveau lien.', e_wait: 'Patientez avant de demander un nouveau code.', e_mail: "L'e-mail n'a pas pu être envoyé. Réessayez plus tard.", e_name: 'Indiquez votre nom.', e_sig: 'Apposez votre signature.', e_accept: 'Cochez la déclaration.',
+      legal: "Signature électronique (eIDAS art. 25.1). Sont conservés : l'heure, l'adresse IP, le navigateur, l'adresse e-mail du code et l'empreinte du document.",
+      roles: { tech: "Technicien d'équilibrage", inspector: 'Contrôleur', installer: 'Installateur (réception)', client: "Maître d'ouvrage / client", other: 'Signataire' } },
+    en: { title: 'Sign', doc: 'Document', project: 'Project', from: 'Requested by', you: 'Signer', role: 'Capacity', open: 'Open the report (PDF)', size: 'Fingerprint of the document (SHA-256)',
+      akkoord: 'I have read the balancing report and agree with the measured values and remarks.', kennisname: 'I have taken note of the balancing report (for information, without agreeing on its content).',
+      name: 'Your name', sig: 'Your signature', sigHint: 'Sign here with a finger or the mouse', clear: 'Clear', getCode: 'Send a code to {m}', codeSent: 'Code sent to {m}. It is valid for {n} minutes.', code: 'Code from the e-mail', sign: 'Sign',
+      again: 'New code', decline: 'Do not sign…', reason: 'Reason (shown to the requester)', declineGo: 'Decline to sign', cancel: 'Cancel',
+      done: 'Signed on {d}. You receive a confirmation by e-mail.', proof: 'Proof of signing', when: 'Time', stmt: 'Statement', ip: 'IP address', dl: 'Download the report (PDF)', dlS: 'Download the signed report (PDF)', dlSn: 'With the signatures given so far, on a last page the server adds.', keep: 'This page and the report stay available {n} days after signing through the link in your e-mail.', declined: 'You declined to sign. The requester has been told.', revoked: 'This request was withdrawn or replaced by a new link.', expired: 'This link has expired. Ask the requester for a new one.', token: 'This link is not valid.', net: 'No connection with the server. Try again.',
+      e_code: 'Wrong code ({n} tries left).', e_code_expired: 'The code has expired: ask for a new one.', e_too_many: 'Too many tries. Ask the requester for a new link.', e_wait: 'Wait a moment before asking for a new code.', e_mail: 'The e-mail could not be sent. Try again later.', e_name: 'Fill in your name.', e_sig: 'Place your signature.', e_accept: 'Tick the statement.',
+      legal: 'Electronic signature (eIDAS art. 25.1). Kept: time, IP address, browser, e-mail address of the code and the fingerprint of the document.',
+      roles: { tech: 'Balancing technician', inspector: 'Inspector', installer: 'Installer (hand-over)', client: 'Client', other: 'Signer' } },
+  };
+  // 0.15.0: SMS and signing with an account (level 1 and 2)
+  const T2 = {
+    nl: { howL: 'Bevestigd met', how: { mail: 'eenmalige code per e-mail', sms: 'eenmalige code per sms', account: 'account + tweede factor' }, getCodeSms: 'Code per sms sturen naar {m}', codeSms: 'Code uit de sms', accBtn: 'Ondertekenen met uw account', accHint: 'U heeft een account met een tweede factor: meld aan met uw wachtwoord en de code van uw authenticator-app, dan is er geen code per {ch} nodig.', mailW: 'e-mail', smsW: 'sms',
+      email: 'E-mailadres van uw account', pw: 'Wachtwoord', login: 'Aanmelden', totp: 'Code uit uw authenticator-app', totpGo: 'Bevestigen', accOk: 'Aangemeld als {e} · tweede factor bevestigd', back: 'Toch met een code ondertekenen',
+      e_login: 'Aanmelden lukt niet: controleer e-mailadres en wachtwoord.', e_nototp: 'Dit account heeft geen tweede factor (authenticator). Onderteken met de code.', e_totp: 'De code van de authenticator klopt niet.',
+      e_account: 'De aanmelding is verlopen: meld opnieuw aan.', e_account_mfa: 'De tweede factor ontbreekt: bevestig met de code van uw authenticator-app.', e_account_other: 'Dit account hoort niet bij het e-mailadres van deze vraag. Meld aan met het juiste account of onderteken met de code.',
+      e_sms: 'De sms kon niet verstuurd worden. Probeer opnieuw.', e_sms_limit: 'Er kunnen deze maand geen sms-codes meer verstuurd worden. Vraag de aanvrager om de link zonder gsm-nummer opnieuw te sturen.', e_sms_not_configured: 'Sms-codes zijn op de server niet ingeschakeld. Vraag de aanvrager om de link zonder gsm-nummer opnieuw te sturen.' },
+    fr: { howL: 'Confirmé par', how: { mail: 'code unique par e-mail', sms: 'code unique par SMS', account: 'compte + second facteur' }, getCodeSms: 'Envoyer le code par SMS au {m}', codeSms: 'Code reçu par SMS', accBtn: 'Signer avec votre compte', accHint: 'Vous avez un compte avec un second facteur : connectez-vous avec votre mot de passe et le code de votre application d\'authentification, sans code par {ch}.', mailW: 'e-mail', smsW: 'SMS',
+      email: 'Adresse e-mail de votre compte', pw: 'Mot de passe', login: 'Se connecter', totp: 'Code de votre application d\'authentification', totpGo: 'Confirmer', accOk: 'Connecté en tant que {e} · second facteur confirmé', back: 'Signer plutôt avec un code',
+      e_login: 'Connexion impossible : vérifiez l\'adresse e-mail et le mot de passe.', e_nototp: 'Ce compte n\'a pas de second facteur (authentification). Signez avec le code.', e_totp: 'Le code de l\'application d\'authentification est incorrect.',
+      e_account: 'La connexion a expiré : reconnectez-vous.', e_account_mfa: 'Le second facteur manque : confirmez avec le code de votre application d\'authentification.', e_account_other: 'Ce compte ne correspond pas à l\'adresse e-mail de cette demande. Connectez-vous avec le bon compte ou signez avec le code.',
+      e_sms: 'Le SMS n\'a pas pu être envoyé. Réessayez.', e_sms_limit: 'Plus aucun code SMS ne peut être envoyé ce mois-ci. Demandez au demandeur de renvoyer le lien sans numéro de mobile.', e_sms_not_configured: 'Les codes SMS ne sont pas activés sur le serveur. Demandez au demandeur de renvoyer le lien sans numéro de mobile.' },
+    en: { howL: 'Confirmed with', how: { mail: 'one-time code by e-mail', sms: 'one-time code by SMS', account: 'account + second factor' }, getCodeSms: 'Send the code by SMS to {m}', codeSms: 'Code from the SMS', accBtn: 'Sign with your account', accHint: 'You have an account with a second factor: sign in with your password and the code of your authenticator app; no code by {ch} is needed.', mailW: 'e-mail', smsW: 'SMS',
+      email: 'E-mail address of your account', pw: 'Password', login: 'Sign in', totp: 'Code from your authenticator app', totpGo: 'Confirm', accOk: 'Signed in as {e} · second factor confirmed', back: 'Sign with a code instead',
+      e_login: 'Signing in failed: check the e-mail address and password.', e_nototp: 'This account has no second factor (authenticator). Sign with the code.', e_totp: 'The authenticator code is wrong.',
+      e_account: 'The sign-in has expired: sign in again.', e_account_mfa: 'The second factor is missing: confirm with the code of your authenticator app.', e_account_other: 'This account does not belong to the e-mail address of this request. Sign in with the right account or sign with the code.',
+      e_sms: 'The SMS could not be sent. Try again.', e_sms_limit: 'No more SMS codes can be sent this month. Ask the requester to send the link again without a mobile number.', e_sms_not_configured: 'SMS codes are not switched on on the server. Ask the requester to send the link again without a mobile number.' },
+  };
+  for (const k of Object.keys(T)) Object.assign(T[k], T2[k] || T2.en);
+  const BASE = API.replace(/\/functions\/v1\/sign$/, '');
+  /** level 1: the session of the account in memory only (not stored); ended after signing */
+  const A = { on: false, step: 'login', s: null, factor: null, email: '' };
+  async function auth(path, body, bearer, method = 'POST') {
+    const h = { apikey: KEY, 'content-type': 'application/json' }; if (bearer) h.authorization = 'Bearer ' + bearer;
+    const r = await fetch(BASE + path, { method, headers: h, body: body ? JSON.stringify(body) : undefined }); const j = await r.json().catch(() => ({}));
+    if (!r.ok) { const e = new Error(j.error_code || j.msg || j.error || 'auth'); e.status = r.status; throw e; } return j;
+  }
+  async function accLogin() {
+    const email = ($('#ae').value || '').trim(), pw = $('#ap').value || ''; A.email = email; if (!email || !pw) { err = L.e_login; render(); return; }
+    busy = true; err = ''; render();
+    try {
+      A.s = await auth('/auth/v1/token?grant_type=password', { email, password: pw });
+      const u = await auth('/auth/v1/user', null, A.s.access_token, 'GET');
+      A.factor = (u.factors || []).find(x => x.factor_type === 'totp' && x.status === 'verified');
+      if (!A.factor) { err = L.e_nototp; A.s = null; } else A.step = 'totp';
+    } catch (e) { err = L.e_login; A.s = null; }
+    busy = false; render(); if ($('#at')) $('#at').focus();
+  }
+  async function accTotp() {
+    const code = ($('#at').value || '').replace(/\D/g, ''); if (code.length !== 6) { err = L.e_totp; render(); return; }
+    busy = true; err = ''; render();
+    try { const c = await auth(`/auth/v1/factors/${A.factor.id}/challenge`, {}, A.s.access_token); const v = await auth(`/auth/v1/factors/${A.factor.id}/verify`, { challenge_id: c.id, code }, A.s.access_token); A.s = Object.assign({}, A.s, v); A.step = 'ok'; }
+    catch (e) { err = L.e_totp; }
+    busy = false; render();
+  }
+  // 0.15.1: only forget the session (memory only, never stored). No /logout: it ended every session of the account, also the app
+  // on the same phone. The access token ends by itself within the hour; the refresh token is dropped here.
+  function accEnd() { Object.assign(A, { on: false, step: 'login', s: null, factor: null }); }
+  let L = T.nl, R = null, codeSent = false, declining = false, busy = false, err = '';
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const f = (t, v) => t.replace(/\{(\w+)\}/g, (_, k) => v[k] == null ? '' : v[k]);
+  const dt = (iso) => new Date(iso).toLocaleString(R && R.lang === 'fr' ? 'fr-BE' : R && R.lang === 'en' ? 'en-GB' : 'nl-BE', { dateStyle: 'long', timeStyle: 'short' });
+  async function call(body) {
+    const r = await fetch(API, { method: 'POST', headers: { 'content-type': 'application/json', apikey: KEY }, body: JSON.stringify(body) });
+    let j = {}; try { j = await r.json(); } catch (e) { }
+    return j;
+  }
+  function msg(m) { $('#m').innerHTML = `<div class="card"><div class="banner ${m.ok ? 'ok' : 'bad'}">${esc(m.text)}</div>${m.extra || ''}</div>`; }
+  // ---------- the signature pad ----------
+  let strokes = [], cv = null;
+  function paint() {
+    if (!cv) return; const w = cv.clientWidth, h = cv.clientHeight, d = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(w * d); cv.height = Math.round(h * d); const x = cv.getContext('2d'); x.setTransform(d, 0, 0, d, 0, 0); draw(x, w, h);
+    $('#hint').hidden = strokes.length > 0;
+  }
+  function draw(x, w, h) {
+    x.clearRect(0, 0, w, h); x.lineCap = 'round'; x.lineJoin = 'round'; x.lineWidth = Math.max(1.6, h * 0.0145); x.strokeStyle = '#12202A'; x.fillStyle = '#12202A';
+    for (const s of strokes) { if (s.length === 1) { x.beginPath(); x.arc(s[0][0] * w, s[0][1] * h, x.lineWidth / 2, 0, 7); x.fill(); continue; }
+      x.beginPath(); x.moveTo(s[0][0] * w, s[0][1] * h); for (let i = 1; i < s.length; i++) x.lineTo(s[i][0] * w, s[i][1] * h); x.stroke(); }
+  }
+  function png() { if (!strokes.length) return ''; const o = document.createElement('canvas'); o.width = 600; o.height = 180; draw(o.getContext('2d'), 600, 180); return o.toDataURL('image/png'); }
+  function bindPad() {
+    cv = $('#pad'); let s = null;
+    const at = (e) => { const r = cv.getBoundingClientRect(); return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))]; };
+    cv.onpointerdown = (e) => { e.preventDefault(); s = [at(e)]; strokes.push(s); try { cv.setPointerCapture(e.pointerId); } catch (er) { } paint(); };
+    cv.onpointermove = (e) => { if (!s) return; e.preventDefault(); s.push(at(e)); paint(); };
+    cv.onpointerup = cv.onpointercancel = () => { s = null; };
+    paint();
+  }
+  // ---------- the page ----------
+  function render() {
+    const sms = R.channel === 'sms', dest = sms ? R.phoneMasked : R.emailMasked;
+    const accBox = () => `<div class="banner info" style="display:grid;gap:8px"><b>${esc(L.accBtn)}</b>
+        ${A.step === 'login' ? `<label class="f">${esc(L.email)}<input type="email" id="ae" autocomplete="username" value="${esc(A.email)}"></label><label class="f">${esc(L.pw)}<input type="password" id="ap" autocomplete="current-password"></label>`
+          : A.step === 'totp' ? `<label class="f">${esc(L.totp)}<input class="code" id="at" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label>`
+          : `<span>✓ ${esc(f(L.accOk, { e: A.email }))}</span>`}</div>
+        ${err ? `<div class="banner bad">${esc(err)}</div>` : ''}
+        <div class="row">${A.step === 'login' ? `<button class="btn primary" id="aLogin"${busy ? ' disabled' : ''}>${esc(L.login)}</button>` : A.step === 'totp' ? `<button class="btn primary" id="aTotp"${busy ? ' disabled' : ''}>${esc(L.totpGo)}</button>`
+          : `<button class="btn primary" id="go"${busy ? ' disabled' : ''}>${esc(L.sign)}</button>`}<button class="btn link" id="accOff">${esc(L.back)}</button></div>`;
+    const nameV = $('#nm') ? $('#nm').value : R.signerName, codeV = $('#cd') ? $('#cd').value : '', acc = $('#acc') ? $('#acc').checked : false, why = $('#why') ? $('#why').value : '';
+    $('#hd2').textContent = [R.requesterCompany, R.project].filter(Boolean).join(' · ');
+    $('#m').innerHTML = `
+      <div class="card"><h1>${esc(L.title)}: ${esc(R.project)}</h1>
+        <dl class="kv"><dt>${esc(L.from)}</dt><dd>${esc([R.requester, R.requesterCompany].filter(Boolean).join(', ') || '—')}</dd>
+          <dt>${esc(L.you)}</dt><dd>${esc([R.signerName, R.signerCompany].filter(Boolean).join(', '))}</dd>
+          <dt>${esc(L.role)}</dt><dd>${esc(L.roles[R.role] || R.role)}</dd></dl></div>
+      <div class="card"><h2>${esc(L.doc)}</h2>
+        ${R.pdfUrl ? `<div class="row"><a class="btn primary" href="${esc(R.pdfUrl)}" target="_blank" rel="noopener noreferrer">${esc(L.open)}</a></div>
+          ${matchMedia('(min-width: 760px)').matches ? `<iframe class="pdf" src="${esc(R.pdfUrl)}" title="PDF"></iframe>` : ''}` : ''}
+        <div class="small muted">${esc(L.size)}</div><div class="hash">${esc(R.docHash)}</div></div>
+      ${declining ? `<div class="card"><label class="f">${esc(L.reason)}<textarea id="why" rows="3" maxlength="1000">${esc(why)}</textarea></label>
+          ${err ? `<div class="banner bad">${esc(err)}</div>` : ''}
+          <div class="row"><button class="btn primary" id="decGo"${busy ? ' disabled' : ''}>${esc(L.declineGo)}</button><button class="btn" id="decNo">${esc(L.cancel)}</button></div></div>`
+      : `<div class="card">
+        <label class="check"><input type="checkbox" id="acc"${acc ? ' checked' : ''}><span>${esc(R.statement === 'kennisname' ? L.kennisname : L.akkoord)}</span></label>
+        <label class="f">${esc(L.name)}<input type="text" id="nm" autocomplete="name" maxlength="120" value="${esc(nameV)}"></label>
+        <div class="f" style="display:grid;gap:4px"><span class="small muted" style="font-weight:600">${esc(L.sig)}</span>
+          <div class="pad"><canvas id="pad" aria-label="${esc(L.sig)}"></canvas><span class="ln"></span><span class="hint" id="hint">${esc(L.sigHint)}</span></div>
+          <div><button class="btn link" id="clr">${esc(L.clear)}</button></div></div>
+        ${A.on ? accBox() : `${codeSent ? `<div class="banner ok">${esc(f(L.codeSent, { m: dest, n: 10 }))}</div>
+          <label class="f">${esc(sms ? L.codeSms : L.code)}<input class="code" id="cd" inputmode="numeric" autocomplete="one-time-code" maxlength="6" value="${esc(codeV)}"></label>` : ''}
+        ${err ? `<div class="banner bad">${esc(err)}</div>` : ''}
+        <div class="row">${codeSent ? `<button class="btn primary" id="go"${busy ? ' disabled' : ''}>${esc(L.sign)}</button><button class="btn" id="getCode"${busy ? ' disabled' : ''}>${esc(L.again)}</button>`
+          : `<button class="btn primary" id="getCode"${busy ? ' disabled' : ''}>${esc(f(sms ? L.getCodeSms : L.getCode, { m: dest }))}</button>`}</div>
+        ${R.account ? `<div class="banner info" style="display:grid;gap:6px"><span class="small">${esc(f(L.accHint, { ch: sms ? L.smsW : L.mailW }))}</span><div><button class="btn" id="accOn">${esc(L.accBtn)}</button></div></div>` : ''}`}
+        <button class="btn link" id="dec">${esc(L.decline)}</button>
+        <p class="small muted" style="margin:0">${esc(L.legal)}</p></div>`}`;
+    if (!declining) {
+      const keep = strokes; bindPad(); strokes = keep; paint();
+      $('#clr').onclick = () => { strokes = []; paint(); };
+      if ($('#getCode')) $('#getCode').onclick = sendCode; if ($('#go')) $('#go').onclick = sign;
+      if ($('#accOn')) $('#accOn').onclick = () => { A.on = true; err = ''; render(); if ($('#ae')) $('#ae').focus(); };
+      if ($('#accOff')) $('#accOff').onclick = () => { accEnd(); err = ''; render(); };
+      if ($('#aLogin')) $('#aLogin').onclick = accLogin; if ($('#aTotp')) $('#aTotp').onclick = accTotp;
+      $('#dec').onclick = () => { declining = true; err = ''; render(); };
+    } else { $('#decGo').onclick = decline; $('#decNo').onclick = () => { declining = false; err = ''; render(); }; }
+  }
+  const E = (j) => { const k = 'e_' + (j.error || ''); return L[k] ? f(L[k], { n: j.left }) : j.error === 'expired' ? L.expired : j.error === 'revoked' ? L.revoked : L.net; };
+  function check() { if (!$('#acc').checked) return L.e_accept; if ($('#nm').value.trim().length < 2) return L.e_name; if (!strokes.length) return L.e_sig; return ''; }
+  async function sendCode() {
+    err = check(); if (err) { render(); return; }
+    busy = true; render(); let j = {}; try { j = await call({ action: 'code', t: tok }); } catch (e) { j = {}; } busy = false;
+    if (j.ok) { codeSent = true; err = ''; } else err = E(j); render(); if ($('#cd')) $('#cd').focus();
+  }
+  async function sign() {
+    const viaAcc = A.on && A.step === 'ok' && A.s;
+    err = check(); if (!err && !viaAcc && !/^\d{6}$/.test(($('#cd').value || '').trim())) err = L.e_code.replace(/\s*\(.*\)/, '.'); if (err) { render(); return; }
+    const body = Object.assign({ action: 'sign', t: tok, name: $('#nm').value.trim(), sig: png(), accept: true }, viaAcc ? { jwt: A.s.access_token } : { code: $('#cd').value.trim() });
+    busy = true; render(); let j = {}; try { j = await call(body); } catch (e) { j = {}; } busy = false;
+    if (viaAcc && (j.ok || j.error === 'account_other')) accEnd(); else if (viaAcc && /^account/.test(j.error || '')) { A.step = 'login'; A.s = null; }
+    if (j.ok) { let o = {}; try { o = await call({ action: 'open', t: tok }); } catch (e) { }
+      if (o.ok) R = o; else Object.assign(R, { status: 'signed', signedAt: j.signedAt, signedName: body.name }); signedView(); return; }
+    err = E(j); render();
+  }
+  async function decline() {
+    busy = true; render(); let j = {}; try { j = await call({ action: 'decline', t: tok, reason: $('#why').value }); } catch (e) { j = {}; } busy = false;
+    if (j.ok) { msg({ ok: false, text: L.declined }); return; } err = E(j); render();
+  }
+  /** after signing: the proof (who, as what, when, which document) and the report to download */
+  function signedView() {
+    $('#hd2').textContent = [R.requesterCompany, R.project].filter(Boolean).join(' · ');
+    $('#m').innerHTML = `<div class="card"><div class="banner ok">${esc(f(L.done, { d: dt(R.signedAt) }))}</div>
+        ${R.pdfUrl ? `<div class="row"><a class="btn primary" href="${esc(R.pdfUrl)}" target="_blank" rel="noopener noreferrer">${esc(R.signedCopy ? L.dlS : L.dl)}</a></div>${R.signedCopy ? `<p class="small muted" style="margin:0">${esc(L.dlSn)}</p>` : ''}` : ''}</div>
+      <div class="card"><h2>${esc(L.proof)}</h2>
+        <dl class="kv"><dt>${esc(L.project)}</dt><dd>${esc(R.project)}</dd>
+          <dt>${esc(L.you)}</dt><dd>${esc([R.signedName || R.signerName, R.signerCompany].filter(Boolean).join(', '))}</dd>
+          <dt>${esc(L.role)}</dt><dd>${esc(L.roles[R.role] || R.role)}</dd>
+          <dt>${esc(L.stmt)}</dt><dd>${esc(R.statement === 'kennisname' ? L.kennisname : L.akkoord)}</dd>
+          <dt>${esc(L.when)}</dt><dd>${esc(dt(R.signedAt))}</dd>
+          ${R.method && L.how[R.method] ? `<dt>${esc(L.howL)}</dt><dd>${esc(L.how[R.method])}</dd>` : ''}
+          ${R.ip ? `<dt>${esc(L.ip)}</dt><dd>${esc(R.ip)}</dd>` : ''}
+          <dt>${esc(L.from)}</dt><dd>${esc([R.requester, R.requesterCompany].filter(Boolean).join(', ') || '—')}</dd></dl>
+        <div class="small muted">${esc(L.size)}</div><div class="hash">${esc(R.docHash)}</div>
+        <p class="small muted" style="margin:0">${esc(f(L.keep, { n: R.viewDays || 90 }))}</p></div>`;
+  }
+  async function start() {
+    const nav = (navigator.language || 'nl').slice(0, 2); L = T[nav] || T.nl;
+    if (!/^[A-Za-z0-9_-]{30,80}$/.test(tok)) { msg({ text: L.token }); return; }
+    let j = {}; try { j = await call({ action: 'open', t: tok }); } catch (e) { msg({ text: L.net }); return; }
+    if (!j.ok) { msg({ text: j.error === 'revoked' ? L.revoked : j.error === 'token' ? L.token : L.net }); return; }
+    R = j; L = T[R.lang] || L; document.documentElement.lang = R.lang; document.title = L.title + ' · ' + R.project;
+    $("#ft").textContent = "Ventilation Setup Tool";
+    if (R.status === 'signed') { signedView(); return; }
+    if (R.status === 'declined') { msg({ text: L.declined }); return; }
+    if (R.expired) { msg({ text: L.expired }); return; }
+    render();
+    addEventListener('resize', () => { if (cv) paint(); });
+  }
+  start();
+})();
+</script>
+</body>
+</html>

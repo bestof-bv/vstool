@@ -42,7 +42,7 @@ function clCardHTML(p) {
     ? `<div class="cl-row sum${r.v ? ' ' + r.v : ''}"><span class="cl-n mono">${it.n}</span><div class="cl-t"><div><b>${__h(it.en)}</b> <span class="chip">${r.v ? esc(CL_WORD()[r.v]) : __h('open')}</span></div><div class="small muted">${__h('per unit, below')}${units.length > 1 ? ' · ' + esc(r.note) : ''}</div></div></div>`
     : clRowHTML(p, it, null)).join('');
   const per = units.map(({ s, rows: rs }) => { const open = rs.filter(x => !x.r.v).length;
-    return `<details class="more cl-unit"${open ? ' open' : ''}><summary>${__h('Unit {s}', { s: s.code })} ${esc(s.name || '')} <span class="small muted">· ${open ? __h('{n} open', { n: open }) : __h('complete')}</span></summary><div class="inner">${rs.map(x => clRowHTML(p, x.it, s)).join('')}</div></details>`; }).join('');
+    return `<details class="more cl-unit" data-k="cl|${s.id}"${open ? ' open' : ''}><summary>${__h('Unit {s}', { s: s.code })} ${esc(s.name || '')} <span class="small muted">· ${open ? __h('{n} open', { n: open }) : __h('complete')}</span></summary><div class="inner">${rs.map(x => clRowHTML(p, x.it, s)).join('')}</div></details>`; }).join('');
   return `<section class="card cl-card" id="clCard"><div class="hd"><h2>${__h('Commissioning checklist')}</h2><span class="small muted">${__h('yes {a} · no {b} · n/a {c} · open {d}', { a: c.ja, b: c.nee, c: c.nvt, d: c.open })}</span></div>
     <p class="small muted" style="margin:0">${__h('Steps with «auto» are filled in from the measurements; any answer can be changed. Open steps are asked before the report.')}</p>
     <div class="cl-list">${rows}</div>${per}</section>`;

@@ -58,6 +58,8 @@
 
 * { box-sizing: border-box; }
 html, body { background: var(--bg); }
+/* 0.13.4: iOS must not enlarge text on its own (it did so in a block that had become wider than the screen) */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   margin: 0; color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.45;
   -webkit-tap-highlight-color: transparent;
@@ -293,7 +295,10 @@ ol.steps li::marker { font-family: var(--font-data); color: var(--accent); font-
 .sheet .sh-top { background: var(--surface); border-bottom: 1px solid var(--line); padding-top: env(safe-area-inset-top, 0px); }
 .sheet .sh-top .wrap { display: flex; align-items: center; gap: 8px; padding-block: 8px; }
 .sheet .sh-top h2 { flex: 1; min-width: 0; font-size: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 8px; align-items: center; }
-.sheet .sh-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.sheet .sh-body { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+/* 0.13.4: a long name (device, MAC, subject) wraps instead of making the card wider than the screen */
+.sheet .card { min-width: 0; overflow-wrap: anywhere; }
+.btn.wrap { white-space: normal; text-align: left; justify-content: flex-start; min-width: 0; height: auto; min-height: 32px; padding-block: 6px; line-height: 1.3; }
 .sheet .sh-body > .wrap { padding-block: 14px 24px; }
 .sheet .sh-foot { background: var(--surface); border-top: 1px solid var(--line); padding-top: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
 .sheet .sh-foot .wrap { display: flex; gap: 10px; }
@@ -505,7 +510,17 @@ body[data-dock="b"][data-dockmin] #sheet .sheet { height: calc(64px + env(safe-a
 body[data-dock="b"][data-dockmin] main { padding-bottom: 120px; }
 body[data-dock] #sheet .sh-body > .wrap { padding-block: 12px 16px; }
 body[data-dock] #sheet .sh-top .wrap { padding-block: 4px; }
-.pt.sel { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.pt.sel { background: color-mix(in srgb, #f5c400 30%, var(--surface)); box-shadow: inset 5px 0 0 var(--accent), inset 0 0 0 2px var(--accent); }
+.pt.sel .mono { color: var(--accent); }
+.pt.was { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+/* 0.13.1: the worked point out of sight → a pin at the edge brings it back */
+.rowpin { position: fixed; left: 50%; transform: translateX(-50%); z-index: 30; border: 0; border-radius: 999px; padding: 7px 14px; background: var(--accent); color: #fff;
+  font: 600 14px/1 var(--font-data); box-shadow: 0 4px 14px rgba(0,0,0,.25); cursor: pointer; }
+body[data-dock="r"] .rowpin { left: calc((100% - var(--dock-w)) / 2); }
+.rowpin[hidden] { display: none; }
+.codego { border: 0; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+@keyframes rowflash { 0%, 60% { outline: 3px solid var(--accent); outline-offset: -3px; } 100% { outline: 3px solid transparent; outline-offset: -3px; } }
+.flash, .flash td { animation: rowflash .9s ease-out; }
 
 /* measurement table */
 .vt { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); container-type: inline-size; }
@@ -539,8 +554,10 @@ body[data-layout="tabs"] { --sticky-top: calc(65px + env(safe-area-inset-top, 0p
 .vt-code .tag { min-width: 22px; height: 20px; font-size: 11px; padding: 0 4px; }
 .vtab tr[data-open] { cursor: pointer; }
 @media (hover: hover) { .vtab tbody tr[data-open]:hover td { background: color-mix(in srgb, var(--surface-2) 45%, transparent); } }
-.vtab tr.sel td { background: var(--accent-soft); }
-.vtab tr.sel td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.vtab tr.sel td { background: color-mix(in srgb, #f5c400 30%, var(--surface)); box-shadow: inset 0 2px 0 var(--accent), inset 0 -2px 0 var(--accent); }
+.vtab tr.sel td:first-child { box-shadow: inset 5px 0 0 var(--accent), inset 0 2px 0 var(--accent), inset 0 -2px 0 var(--accent); }
+.vtab tr.sel td:last-child { box-shadow: inset -2px 0 0 var(--accent), inset 0 2px 0 var(--accent), inset 0 -2px 0 var(--accent); }
+.vtab tr.was td:first-child { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
 .vtab tr.sel .vt-code b { color: var(--accent); }
 .vtab tr.node td { background: color-mix(in srgb, var(--accent-soft) 35%, transparent); }
 .vtab tr.dev td { background: color-mix(in srgb, var(--surface-2) 35%, transparent); }
@@ -952,3 +969,81 @@ body[data-dock="r"] .dock-grip::after { content: ''; position: absolute; left: 6
 body[data-dock="r"] .dock-grip:hover::after, body[data-dockdrag] .dock-grip::after { background: var(--sup); }
 body[data-dockdrag] { user-select: none; cursor: col-resize; }
 .banner.ann { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+/* 0.13.2: the toolbars in drop-downs; the cards that fold (+ / −) */
+.ptsbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ptsbar-t { font-size: 18px; }
+details.dd { position: relative; }
+details.dd > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; user-select: none; }
+details.dd > summary::-webkit-details-marker { display: none; }
+details.dd > summary::after { content: "▾"; font-size: 11px; opacity: .65; }
+details.dd[open] > summary { box-shadow: 0 0 0 2px var(--accent-soft); }
+details.dd > summary .ddi { display: inline-flex; width: 16px; height: 16px; }
+details.dd > summary .ddi svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ddb { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--accent-fg); font-size: 11px; font-family: var(--font-data); display: inline-grid; place-items: center; }
+.dd-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; min-width: 240px; max-width: min(92vw, 340px); max-height: 70vh; overflow: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: 6px; display: grid; gap: 2px; }
+details.dd:not([open]) > .dd-menu { display: none; }
+.dd-item { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; padding: 8px 10px; border: 0; background: none; text-align: left; font: inherit; font-size: 14px; color: var(--fg); border-radius: 8px; cursor: pointer; text-decoration: none; }
+.dd-item:hover { background: var(--surface-2); }
+.dd-item.on { color: var(--accent); font-weight: 600; }
+.dd-item.strong { font-weight: 600; }
+.dd-item .ddm { width: 14px; color: var(--accent); }
+.dd-item svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; flex: none; }
+.dd-sep { height: 1px; background: var(--line); margin: 4px 6px; }
+.dd-fl { display: grid; gap: 8px; padding: 6px; }
+.dd-fl .filters { display: grid; gap: 8px; }
+.dd-fl .filters select { width: 100%; }
+.dd-fl .seg { width: 100%; display: flex; }
+.dd-fl .seg button { flex: 1; }
+details.card.fold { padding: 0; display: block; }
+details.card.fold > summary { list-style: none; cursor: pointer; padding: 14px 16px; display: flex; align-items: center; gap: 10px; margin: 0; }
+details.card.fold > summary::-webkit-details-marker { display: none; }
+details.card.fold > summary::after { content: "+"; margin-left: auto; font-family: var(--font-data); font-size: 20px; line-height: 1; color: var(--accent); width: 18px; text-align: center; }
+details.card.fold[open] > summary::after { content: "−"; }
+details.card.fold > summary h2 { margin: 0; }
+details.card.fold > .fold-body { display: grid; gap: 12px; padding: 0 16px 16px; min-width: 0; }
+/* 0.13.2: on a phone the drop-downs open as a sheet above the tab bar (a button at the left edge has no room for a menu under it) */
+@media (max-width: 600px) {
+  details.dd > .dd-menu { position: fixed; left: 12px; right: 12px; top: auto; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); max-width: none; min-width: 0; max-height: 58vh; box-shadow: 0 -8px 30px rgba(0, 0, 0, .22); z-index: 60; }
+}
+/* 0.13.3: the count badge sits on the corner of its button and does not push the neighbours aside */
+details.dd > summary { position: relative; }
+.ddb { position: absolute; top: -7px; right: -7px; box-shadow: 0 0 0 2px var(--bg, #fff); }
+/* 0.13.3: on a phone the toolbar shows icons only; the name appears while the menu is open */
+@media (max-width: 600px) {
+  .ptsbar details.dd > summary { min-width: 38px; height: 36px; padding: 0 9px; justify-content: center; }
+  .ptsbar details.dd > summary::after { display: none; }
+  .ptsbar details.dd > summary .ddl { display: none; }
+  .ptsbar details.dd[open] > summary .ddl { display: inline; }
+}
+/* 0.14.0: signers on the Report page */
+.sg-list { display: grid; gap: 8px; }
+.sg-row { border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); min-width: 0; overflow-wrap: anywhere; }
+.sg-row.open { background: var(--surface); }
+.sg-hd { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
+.sg-img { width: 96px; height: 29px; object-fit: contain; flex: none; border-radius: 6px; background: #fff; border: 1px solid var(--line); }
+.sg-none { display: inline-flex; align-items: center; justify-content: center; color: var(--muted); }
+.sg-who { flex: 1; min-width: 0; display: grid; line-height: 1.3; }
+.sg-st.ok { color: var(--ok); } .sg-st.nok { color: var(--bad); } .sg-st.warn { color: var(--warn, #8A5A00); }
+.sg-ed { display: grid; gap: 10px; padding: 0 10px 10px; }
+.sigfs-note { display: block; margin-top: 2px; }
+@media (prefers-color-scheme: dark) { .sg-img { background: #fff; } }
+@media (max-width: 600px) { .sg-img { width: 64px; height: 20px; } .sg-ed .grid2 { grid-template-columns: minmax(0, 1fr); } }
+/* 0.14.2: the steps of a signature request */
+.sg-tl { padding: 0 10px 8px; }
+.sg-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 0; font-size: 12px; color: var(--muted); }
+.sg-steps li { display: inline-flex; align-items: baseline; gap: 4px; }
+.sg-steps li + li::before { content: '→'; margin: 0 6px; color: var(--line-2, var(--muted)); }
+.sg-steps li.done { color: var(--fg); } .sg-steps li.done > span::before { content: '✓ '; color: var(--ok); }
+.sg-steps li.nok { color: var(--bad); } .sg-steps time { color: var(--muted); font-variant-numeric: tabular-nums; }
+/* 0.15.0: the version for signing (frozen on the server) */
+.sg-ver { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft, transparent); }
+.sg-ver > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 260px; }
+.sg-ver.warn { border-color: var(--warn, #c98a00); }
+/* 0.15.2: loading the full version — a blocking window with a progress bar */
+.load-ov { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; padding: 16px; background: rgba(10, 25, 30, .55); backdrop-filter: blur(2px); }
+.load-box { width: min(420px, 100%); display: grid; gap: 10px; padding: 20px; border-radius: 14px; background: var(--surface, var(--bg, #fff)); color: var(--fg, #12202A); box-shadow: 0 12px 40px rgba(0, 0, 0, .25); }
+.load-bar { height: 10px; border-radius: 99px; background: var(--line, #DCE4E4); overflow: hidden; }
+.load-bar i { display: block; height: 100%; background: var(--accent, #0F3D3E); border-radius: 99px; transition: width .25s ease; }
+.load-row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+.load-pct { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }

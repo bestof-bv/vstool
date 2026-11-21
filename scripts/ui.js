@@ -86,11 +86,18 @@ function toast(msg) {
 }
 
 /* ---------- render root ---------- */
+let RS = { pid: null, step: -1, view: '' }; // 0.13.2: the page last drawn
 function render() {
   if (gateOn()) { S.view = 'home'; S.pid = null; S.ed = null; S.dlg = null; S.pv = null; renderGate(); renderSheet(); return; }
+  const same = S.view === 'project' && !!cur() && RS.view === 'project' && RS.pid === cur().id && RS.step === S.step;
+  const y = window.scrollY; const dd = typeof DDK !== 'undefined' ? DDK.open() : null;
   if (S.view === 'home') renderHome(); else renderProject();
+  RS = { pid: cur() ? cur().id : null, step: S.step, view: S.view };
+  if (dd) DDK.restore(same);
+  if (typeof DET !== 'undefined') DET.apply(app); // 0.13.1: the folding the user chose
   Access.decorate(app);
   renderSheet();
+  if (same) window.scrollTo(0, y); // 0.13.2: the same step: the page does not jump to the top (after the folding is applied)
   updateLive();
   hydratePhotos(app); hydratePlans(app);
 }
@@ -118,7 +125,7 @@ function photosHTML(p, owner) {
 function pageNotes(p, key) {
   const n = (p.notes && p.notes[key]) || { text: '', photos: [] };
   const cnt = (n.photos || []).length;
-  return `<details class="more"${String(n.text || '').trim() || cnt ? ' open' : ''}><summary>${__h('Notes and photos for this page')}${cnt ? ` <span class="chip">${cnt} ${__h('photos')}</span>` : ''}</summary><div class="inner">
+  return `<details class="more" data-k="notes|${esc(key)}"${String(n.text || '').trim() || cnt ? ' open' : ''}><summary>${__h('Notes and photos for this page')}${cnt ? ` <span class="chip">${cnt} ${__h('photos')}</span>` : ''}</summary><div class="inner">
     ${inp({ f: `notes.${key}.text` }, n.text, { label: __('Note'), nl: RL.page[key], area: true, ph: __('Goes into the report, chapter «Opmerkingen en foto\'s»') })}
     ${photosHTML(p, 'page:' + key)}
   </div></details>`;
@@ -202,11 +209,15 @@ function applyDock() {
   syncSel();
 }
 /** highlight the point of the open panel in the table / list and keep it in view */
+function selId() { // 0.13.2: the worked point; it stays highlighted after its panel is closed
+  const p = cur(); if (S.ed) { if (p) S.keepSel = { pid: p.id, id: S.ed.id }; return S.ed.id; }
+  return S.keepSel && p && S.keepSel.pid === p.id ? S.keepSel.id : null;
+}
 function syncSel(scroll) {
-  const id = S.ed && dockMode() ? S.ed.id : null;
+  const id = selId();
   let row = null;
   app.querySelectorAll('[data-row]').forEach(r => { const on = r.dataset.row === id; r.classList.toggle('sel', on); if (on && !row) row = r; });
-  if (!row || !scroll) return;
+  if (!row || !scroll || !S.ed) return;
   const rc = row.getBoundingClientRect(); const top = (app.querySelector('.top')?.getBoundingClientRect().bottom || 0) + 40;
   const sh = sheetEl.querySelector('.sheet'); const bottom = document.body.dataset.dock === 'b' && sh ? sh.getBoundingClientRect().top - 8 : window.innerHeight - 8;
   if (rc.top < top) window.scrollBy(0, rc.top - top); else if (rc.bottom > bottom) window.scrollBy(0, rc.bottom - bottom);
@@ -283,7 +294,7 @@ function renderProject() {
 /* ---------- step 1: project ---------- */
 function stepProject(p) {
   const I = p.info;
-  return `
+  return foldStep(`
   <section class="card"><div class="hd"><h2>${__h('Project data')}</h2></div>
     <div class="grid2">
       ${inp({ f: 'info.nr' }, I.nr, { label: __('Project number'), nl: 'Projectnummer', ph: 'PMI2026-001' })}
@@ -311,11 +322,11 @@ function stepProject(p) {
     </div>
     <p class="small muted" style="margin:0">${__h('The tolerance applies to the control measurement: deviation from the design flow within ±%. The density converts dynamic pressure into velocity. The limit of the current unbalance (max |I − Iavg| / Iavg) comes from the documentation of the motor maker.')}</p>
   </section>
-  ${plansCardHTML(p)}
+  <div data-blk="plans" data-docs="${(p.docs || []).length}">${plansCardHTML(p)}</div>
   ${syncCardHTML(p)}
   ${teamCardHTML(p)}
   ${coverCard(p)}
-  ${insCardHTML(p)}`;
+  ${insCardHTML(p)}`);
 }
 /* ---------- measuring instruments: kind and range from the manufacturer's data sheet ---------- */
 const insLabel = (ins) => [ins.name, ins.type].filter(Boolean).join(' · ') || __('Instrument');
@@ -380,32 +391,26 @@ function stepPoints(p) {
   S.list = pts.map(x => x.id);
   return `
   <section class="group">
-    <div class="group-hd"><h3>${__h('Units · Luchtgroepen')}</h3>${pk ? '' : `<span class="row" style="gap:6px">${p.systems.length > 1 ? `<button class="btn sm ghost" data-act="sysSort">${__h('Order by code')}</button>` : ''}<button class="btn sm" data-act="addSys">${__h('+ Unit')}</button></span>`}</div>
-    ${sysCards || `<div style="padding:14px" class="small muted">${__h('First add an air handling unit with the design supply and extract flows — or load the points from Excel with the button below.')}</div>`}
+    <div class="group-hd"><h3>${__h('Units · Luchtgroepen')}</h3></div>
+    ${sysCards || `<div style="padding:14px" class="small muted">${__h('First add an air handling unit with the design supply and extract flows — or load the points from Excel with «+ Add» above.')}</div>`}
   </section>
-  ${!p.systems.length ? `<div class="row"><button class="btn sm" data-act="importXlsx">${ICON.grid} ${__h('Import from Excel')}</button><button class="btn sm ghost" data-act="importTpl">${__h('Excel template')}</button><input type="file" id="importXlsxFile" class="vh" accept=".xlsx,.xlsm">${docsBtn('merge')}${aiBtn('merge')}</div>` : ''}
-  ${p.systems.length ? `
-  <div class="row"><h2 style="font-size:18px">${__h('Points')}</h2><span class="spacer"></span>
-    ${!pk && Access.can('structure.edit') && S.f.order !== 'room' ? `<button class="btn sm${S.reorder ? ' primary' : ''}" data-act="reorder" aria-pressed="${S.reorder ? 'true' : 'false'}" title="${__h('Order of the points on a branch')}">↕ ${S.reorder ? __h('Done') : __h('Order')}</button>` : ''}
-    ${(p.docs || []).length ? `<button class="btn sm" data-act="pvPlace" title="${__h('Place points on the plan')}">${ICON_PLAN} ${__h('On the plan')}</button>` : ''}<button class="btn sm" data-act="bulk">${__h('+ Series')}</button><button class="btn sm primary" data-act="addPt">${__h('+ Point')}</button></div>
-  ${pk ? '' : `<div class="row"><button class="btn sm" data-act="importXlsx">${ICON.grid} ${__h('Import from Excel')}</button><button class="btn sm ghost" data-act="importTpl">${__h('Excel template')}</button>${docsBtn('merge')}${aiBtn('merge')}<span class="spacer"></span><button class="btn sm" data-act="pkNew">${__h('+ Package for a crew')}</button>
-    <input type="file" id="importXlsxFile" class="vh" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></div>`}
-  ${filtersHTML(p, false)}
-  ${pts.length ? groupsHTML(p, pts, 'setup') : `<div class="empty"><span class="small">${__h('Add grilles, ducts and dampers. «Series» creates several points at once: T1.01, T1.02 …')}</span></div>`}` : ''}`;
+  ${p.systems.length || !pk ? ptsBar(p, { add: true, filter: p.systems.length > 0, title: __('Points'), pk, points: true }) : ''}
+  ${ptsFiles(p, pk)}
+  ${p.systems.length ? (pts.length ? groupsHTML(p, pts, 'setup') : `<div class="empty"><span class="small">${__h('Add grilles, ducts and dampers. «Series» creates several points at once: T1.01, T1.02 …')}</span></div>`) : ''}`;
 }
 /** 0.9.5: the rooms (lokaal) of the project, or of one floor / zone, in natural order */
 function roomOpts(p, zone) {
   return [...new Set(p.points.filter(x => x.room && (!zone || zone === 'all' || (x.zone || '') === zone)).map(x => x.room))].sort(natCmp);
 }
-function filtersHTML(p, withTodo) {
+function filtersHTML(p, withTodo, o = {}) {
   const zs = [...new Set(p.points.map(x => x.zone || '').filter(Boolean))].sort(natCmp);
   const rs = roomOpts(p, S.f.zone);
   return `<div class="filters">
     <select id="flt-sys" data-flt="sys"><option value="all">${__h('All units')}</option>${sysFilterOpts(p)}</select>
-    ${seg('fltDir', S.f.dir, { all: __('All'), T: __('Supply'), A: __('Extract') })}
+    ${seg('fltDir', S.f.dir, { all: __('All'), T: __('Supply'), A: __('Extract') }, ' data-keep')}
     ${zs.length ? `<select id="flt-zone" data-flt="zone" aria-label="${__h('Floor / zone')}"><option value="all">${__h('All floors / zones')}</option>${zs.map(z => `<option value="${esc(z)}"${S.f.zone === z ? ' selected' : ''}>${esc(z)}</option>`).join('')}</select>` : ''}
     ${rs.length ? `<select id="flt-room" data-flt="room" aria-label="${__h('Room')}"><option value="all">${__h('All rooms')}</option>${rs.map(r => `<option value="${esc(r)}"${S.f.room === r ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>` : ''}
-    ${seg('fltOrder', S.f.order || 'branch', { branch: __('By unit / branch'), room: __('By floor / room') })}
+    ${o.noOrder ? '' : seg('fltOrder', S.f.order || 'branch', { branch: __('By unit / branch'), room: __('By floor / room') }, ' data-keep')}
     ${withTodo ? `<label class="check" for="flt-todo" style="min-height:auto"><input id="flt-todo" type="checkbox" data-flt="todo"${S.f.todo ? ' checked' : ''}><span class="small">${__h('only without measurement')}</span></label>` : ''}
   </div>`;
 }
@@ -518,7 +523,7 @@ function stepMeasure(p, phase) {
   </section>
   ${p.systems.filter(s => inKey(p, S.f.sys, s.id)).map(s => ahuCard(p, s, phase)).join('')}
   ${p.systems.filter(s => inKey(p, S.f.sys, s.id)).flatMap(s => unitDirs(s).filter(d => S.f.dir === 'all' || S.f.dir === d).map(d => pressureCard(p, s, d, phase))).join('')}
-  ${filtersHTML(p, true)}
+  ${ptsBar(p, { todo: true, title: __('Points'), points: false })}
   ${pts.length ? (useTable() ? measTables(p, pts, phase) : groupsHTML(p, pts, phase)) : `<div class="empty small">${__h('No points for this filter.')}</div>`}`;
 }
 /** instrument per method for this measurement: filled in automatically when a reading is typed (table or panel) */
@@ -549,7 +554,7 @@ function ahuCard(p, s, phase) {
   const pair = (key, label, nlT, unit) => `<div class="stack-s"><span style="font-weight:600;font-size:14px">${label}${repHint(nlT, label) ? ` <span class="small muted" style="font-weight:400">· ${esc(repHint(nlT, label))}</span>` : ''}</span><div class="grid2">
       ${ds.map(dir => inp({ sys: s.id, f: `meas.${phase}.${key}${dir}` }, m[key + dir], { label: dir === 'T' ? __('Supply') : __('Extract'), num: true, unit, rrw: key === 'pa', neg: key === 'pa' || key === 'psz' || key === 'psp' })).join('')}</div></div>`;
   const g = grpOf(p, s.id);
-  return `<details class="more"${hasData || phase === 'eerste' ? ' open' : ''}>
+  return `<details class="more" data-k="unit|${s.id}|${phase}"${hasData || phase === 'eerste' ? ' open' : ''}>
     <summary>${esc(s.code)} · ${__h('unit')} ${esc(s.name)}${g ? ` <span class="small muted">· ${esc(entryCode(entryOf(p, s.id)))} ${esc(UL().role[roleOf(p, s.id)])}</span>` : ''}</summary>
     <div class="inner">
       ${unitClReminder(p, s, phase)}
@@ -634,7 +639,7 @@ function stepDevices(p) {
   return `
   <section class="card"><div class="hd"><h2>${__h('Balancing order')}</h2></div>
     <ol class="stagebar">${STAGES.map((s, i) => `<li><button type="button" class="stg ${s.st || 'none'}" data-act="balGo" data-v="${s.id}"><span class="stn">${i + 1}</span><span class="stt">${esc(s.t)}</span>${s.st && s.st !== 'na' ? `<span class="sts">${esc(stLab[s.st])}</span>` : ''}</button></li>`).join('')}</ol>
-    <details class="more"><summary>${__h('How to balance')}</summary><div class="inner"><ol class="steps">
+    <details class="more" data-k="howbal"><summary>${__h('How to balance')}</summary><div class="inner"><ol class="steps">
       <li>${__h('Start from the pressure index — the point with the lowest static pressure (measurement 1). The dampers on its path stay open.')}</li>
       <li>${__h('The cards below go bottom-up through the hierarchy: first the grilles under each iris / damper, then the irises under a CAV, then the top-level nodes. In each group the flow index is the point with the lowest ratio; close the others down to the same ratio (calculator).')}</li>
       <li>${__h('Within one level the cards go from the most overloaded group (highest ratio) to the index group (lowest ratio), which is adjusted last: throttling the overloaded groups first raises the pressure for the weaker ones.')}</li>
@@ -682,7 +687,7 @@ function pressureCard(p, s, dir, phase) {
         ${sub ? `<div class="small muted">${esc(sub)}</div>` : ''}${loss ? `<div class="small">${loss}</div>` : ''}</div>
       <div class="pr">${ctl ? `<span class="small muted">${__h('before')} ${psOf(pt, 'eerste') != null ? fmt(psOf(pt, 'eerste')) : '—'}</span>` : ''}${field}</div></div>`;
   };
-  return `<details class="more"${open ? ' open' : ''}><summary>${esc(s.code)} · ${__h('duct pressures')} · ${L.dir[dir].toLowerCase()}</summary><div class="inner">
+  return `<details class="more" data-k="dp|${s.id}|${dir}|${phase}"${open ? ' open' : ''}><summary>${esc(s.code)} · ${__h('duct pressures')} · ${L.dir[dir].toLowerCase()}</summary><div class="inner">
     <p class="small muted" style="margin:0">${ctl ? __('Measure the static pressure again after adjusting: the increase of the loss between the master and the node shows what the throttled damper takes.') : __('All dampers open. Measure the static pressure in the duct before each node (CAV, iris, branch damper) and at the farthest grilles. The point with the lowest pressure is the pressure index: its path from the fan is the most loaded.')}</p>
     <div class="small">${__h('Fan (external pressure):')} <b class="mono">${isNum(fan) ? fmt(fan) + (' ' + __('Pa')) : '—'}</b>${isNum(fan) ? '' : (' — ' + __('enter it in the unit card'))}</div>
     ${indexLine(p, s, dir, phase)}
@@ -845,11 +850,7 @@ function stepReport(p) {
     ${inp({ f: 'report.remarks' }, p.report.remarks, { label: __('Remarks'), nl: 'Opmerkingen', area: true })}
     <p class="small muted" style="margin:0">${__h('Write the conclusion and remarks in the report language.')}</p>
   </section>
-  <section class="card"><div class="hd"><h2>${__h('Signature')}</h2><button class="btn sm" data-act="clearSig">${__h('Clear')}</button></div>
-    ${inp({ f: 'report.signName' }, p.report.signName, { label: __('Name'), nl: 'Naam' })}
-    ${sigSmall() ? `<button type="button" class="sig sig-prev" data-act="sigOpen" aria-label="${__h('Signature field')}">${p.report.signature ? `<img src="${esc(p.report.signature)}" alt="">` : `<span>${__h('Tap to sign')}</span>`}</button>`
-      : `<div class="sig-box"><canvas class="sig" id="sigPad" aria-label="${__h('Signature field')}"></canvas><span class="sig-line" aria-hidden="true"></span></div>`}
-  </section>
+  ${typeof signCardHTML === 'function' ? signCardHTML(p) : ''}
   <section class="card"><div class="hd"><h2>${__h('Report')}</h2>${p.report.generatedAt ? `<span class="small muted">${__h('last:')} ${esc(fmtDate(p.report.generatedAt))}</span>` : ''}</div>
     <div class="field"><span class="label">${__h('Report language')}</span>${langSeg('repLang', p.report.lang || 'nl', I18N.list('rep'))}</div>
     <div class="grid2">
@@ -913,22 +914,23 @@ function initSig() {
   const pad = sigPad(c, { base: p.report.signature, onEnd: () => { p.report.signature = pad.png(); touch(p); } });
 }
 /** phones: the full-screen window with OK / Cancel */
-async function openSigFS() {
+async function openSigFS(o = {}) { // 0.14.0: any signer — o: { title, sub, note, base, onSave(png) }; without o: the technician of the project (as before)
   const p = cur(); if (!p || document.querySelector('.sigfs')) return;
+  const base = o.onSave ? (o.base || '') : p.report.signature; const save = o.onSave || ((png) => { p.report.signature = png; touch(p); });
   const el = document.createElement('div'); el.className = 'sigfs'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', __('Signature'));
-  el.innerHTML = `<div class="sigfs-in"><div class="sigfs-hd"><b>${__h('Signature')}</b><span class="small muted">${esc(p.report.signName || p.info.technician || '')}</span></div>
+  el.innerHTML = `<div class="sigfs-in"><div class="sigfs-hd"><b>${esc(o.title || __('Signature'))}</b><span class="small muted">${esc(o.onSave ? (o.sub || '') : (p.report.signName || p.info.technician || ''))}</span>${o.note ? `<span class="small sigfs-note">${esc(o.note)}</span>` : ''}</div>
     <div class="sigfs-area"><div class="sigfs-pad"><canvas class="sig"></canvas><span class="sig-line" aria-hidden="true"></span><span class="sig-hint">${__h('Sign here')}</span></div></div>
     <div class="sigfs-bar"><button type="button" class="btn" data-sig="cancel">${__h('Cancel')}</button><button type="button" class="btn ghost" data-sig="clear">${__h('Clear')}</button><span class="spacer"></span><button type="button" class="btn primary" data-sig="ok">${__h('OK')}</button></div></div>`;
   document.body.appendChild(el); document.body.classList.add('sigfs-open');
   const inner = el.querySelector('.sigfs-in'), area = el.querySelector('.sigfs-area'), box = el.querySelector('.sigfs-pad'), c = el.querySelector('canvas'), hint = el.querySelector('.sig-hint');
   // landscape: lock the screen when the device allows it (full screen first), else turn the window by 90°
   let locked = false;
-  try { if (el.requestFullscreen) await el.requestFullscreen({ navigationUI: 'hide' }); if (screen.orientation && screen.orientation.lock) { await screen.orientation.lock('landscape'); locked = true; } } catch (e) { }
+  if (sigSmall()) { try { if (el.requestFullscreen) await el.requestFullscreen({ navigationUI: 'hide' }); if (screen.orientation && screen.orientation.lock) { await screen.orientation.lock('landscape'); locked = true; } } catch (e) { } }
   const turned = () => inner.classList.contains('rot');
   // with the window turned, a screen point is mapped back onto the canvas (canvas x runs down the screen, canvas y runs to the left)
   const map = (e, cv) => { const r = cv.getBoundingClientRect(); return turned() ? [e.clientY - r.top, r.right - e.clientX] : [e.clientX - r.left, e.clientY - r.top]; };
-  const pad = sigPad(c, { base: p.report.signature, map, onEnd: () => { hint.hidden = true; } });
-  hint.hidden = !!p.report.signature;
+  const pad = sigPad(c, { base, map, onEnd: () => { hint.hidden = true; } });
+  hint.hidden = !!base;
   const layout = () => {
     inner.classList.toggle('rot', window.innerHeight > window.innerWidth);
     const aw = area.clientWidth - 8, ah = area.clientHeight - 8; let bw = aw, bh = aw * SIG_H / SIG_W; if (bh > ah) { bh = ah; bw = ah * SIG_W / SIG_H; }
@@ -936,8 +938,9 @@ async function openSigFS() {
   };
   const onResize = () => requestAnimationFrame(layout);
   window.addEventListener('resize', onResize); layout(); setTimeout(layout, 300);
+  const saveFn = save; // (the name «save» is the flag of close below)
   const close = async (save) => {
-    if (save) { p.report.signature = pad.png(); touch(p); }
+    if (save) await saveFn(pad.png());
     window.removeEventListener('resize', onResize); document.removeEventListener('keydown', onKey);
     try { if (locked && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) { }
     try { if (document.fullscreenElement) await document.exitFullscreen(); } catch (e) { }
@@ -970,6 +973,7 @@ function renderSheet() {
     const pt = p.points.find(x => x.id === S.ed.id); if (!pt) { S.ed = null; return renderSheet(); }
     sheetEl.innerHTML = editorHTML(p, pt, S.ed.mode);
   } else sheetEl.innerHTML = dialogHTML(p, S.dlg);
+  if (typeof DET !== 'undefined') DET.apply(sheetEl);
   sheetEl.dataset.key = key; sheetEl.dataset.type = S.ed ? 'editor' : (S.dlg && S.dlg.type) || '';
   if (S.dlg && S.dlg.type === 'settings' && !S.ed) fillDeviceMemory();
   Access.decorate(sheetEl);
@@ -979,6 +983,8 @@ function renderSheet() {
   { const si = sheetEl.querySelector('[data-storeinfo]'); if (si && navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(e => { const n = Object.values(Store.projects).reduce((k, x) => k + (x.docs || []).length, 0); si.textContent = __('Used on this device: {u} of {q} · plans in the projects: {n}', { u: MB(e.usage || 0), q: MB(e.quota || 0), n }); }).catch(() => { }); }
   applyDock(); if (S.ed && key !== renderSheet.last) syncSel(true); renderSheet.last = key;
   updateLive();
+  if (typeof KEEP !== 'undefined') KEEP.mark();
+  if (typeof btAfterRender === 'function') btAfterRender(); // 0.13.0: live values of the Bluetooth instrument
 }
 function renderViewer() {
   const p = cur();
@@ -1148,7 +1154,7 @@ function ductFields(pt) {
 }
 function editorHTML(p, pt, mode) {
   const phase = mode === 'eerste' || mode === 'controle' ? mode : null;
-  const title = `<span class="tag ${pt.kind === 'device' ? 'D' : pt.dir}">${pt.kind === 'device' ? '—' : pt.dir}</span><span class="mono">${esc(pt.code || __('New point'))}</span>`;
+  const title = `<span class="tag ${pt.kind === 'device' ? 'D' : pt.dir}">${pt.kind === 'device' ? '—' : pt.dir}</span>${dockMode() ? `<button type="button" class="mono codego" data-act="rowPin" title="${__h('Back to the point in the list')}">${esc(pt.code || __('New point'))}</button>` : `<span class="mono">${esc(pt.code || __('New point'))}</span>`}`;
   const listIdx = S.list.indexOf(pt.id);
   let body = addedBanner(p, pt);
   { const b = measurable(pt) ? blockedBy(p, pt) : null; if (b) body += `<div class="banner" style="background:var(--bad-soft);border-color:transparent">${__h('Behind {code} ({state}): the measurement here is not representative until the damper is open and in order.', { code: b.code || '?', state: [b.reg.state ? L.state[b.reg.state] : '', b.reg.cond ? L.cond[b.reg.cond] : ''].filter(Boolean).join(', ').toLowerCase() })}</div>`; }
@@ -1163,6 +1169,7 @@ function editorHTML(p, pt, mode) {
       </div>
       ${methodParams(p, pt)}
       ${readingsHTML(p, pt, phase)}
+      ${typeof btBarHTML === 'function' ? btBarHTML(p, pt, phase) : ''}
       <div class="gauge">
         <span class="label">${__h('Flow rate')} ${phase === 'eerste' ? ('· ' + __('measurement 1')) : ('· ' + __('control'))}</span>
         <div class="big" data-live="pq|${pt.id}|${phase}">—</div>
@@ -1181,7 +1188,7 @@ function editorHTML(p, pt, mode) {
         ? inp({ pt: pt.id, f: 'reg.posBefore' }, pt.reg.posBefore, { label: __('Position before'), nl: 'Stand vóór', ph: __('open / 4 / 100%') })
         : inp({ pt: pt.id, f: 'reg.posAfter' }, pt.reg.posAfter, { label: __('Position after'), nl: 'Stand na', ph: '3 / 70%' }) + chk({ pt: pt.id, f: 'reg.locked' }, pt.reg.locked, __('Locked'))}</div></section>`;
     body += statusHTML(p, pt);
-    body += `<details class="more"><summary>${__h('Point data')}</summary><div class="inner">${setupFields(p, pt)}</div></details>`;
+    body += `<details class="more" data-k="ptdata"><summary>${__h('Point data')}</summary><div class="inner">${setupFields(p, pt)}</div></details>`;
   } else body += setupFields(p, pt) + statusHTML(p, pt);
   body += pinCardHTML(p, pt);
   body += `<section class="card"><div class="hd"><h3>${__h('Note and photos')}</h3><span class="small muted">${__h('in the report: Opmerkingen en foto\'s')}</span></div>
@@ -1274,7 +1281,7 @@ function setupFields(p, pt) {
         ${DEVICE_ONLY.includes(r.type) ? sel({ pt: pt.id, f: 'reg.state' }, r.state || '', posLabels(), { label: __('Position'), nl: 'Stand' }) : ''}
       </div>
       ${r.type !== 'none' && !DEVICE_ONLY.includes(r.type) ? chk({ pt: pt.id, f: 'reg.locked' }, r.locked, __('Locked after adjusting')) : ''}
-      ${r.type !== 'none' && !DEVICE_ONLY.includes(r.type) ? `<details class="more"${ctlOn(r.ctl) || String(r.act || '').trim() ? ' open' : ''}><summary>${__h('Actuator · control and communication')}</summary><div class="inner">${inp({ pt: pt.id, f: 'reg.act' }, r.act || '', { label: __('Motor / actuator type'), nl: 'Motor', ph: 'Belimo LMV-D3-MOD' })}${ctlHTML(p, { pt: pt.id }, 'reg.ctl', r.ctl, {})}${r.type === 'vav' ? '' : `<span class="small muted">${__h('With a motor or a control filled in, this damper is listed in «Regelorganen» of the report.')}</span>`}</div></details>` : ''}
+      ${r.type !== 'none' && !DEVICE_ONLY.includes(r.type) ? `<details class="more" data-k="act|${pt.id}"${ctlOn(r.ctl) || String(r.act || '').trim() ? ' open' : ''}><summary>${__h('Actuator · control and communication')}</summary><div class="inner">${inp({ pt: pt.id, f: 'reg.act' }, r.act || '', { label: __('Motor / actuator type'), nl: 'Motor', ph: 'Belimo LMV-D3-MOD' })}${ctlHTML(p, { pt: pt.id }, 'reg.ctl', r.ctl, {})}${r.type === 'vav' ? '' : `<span class="small muted">${__h('With a motor or a control filled in, this damper is listed in «Regelorganen» of the report.')}</span>`}</div></details>` : ''}
       ${pt.kind === 'terminal' ? `<span class="small muted">${__h('Plenum damper: in the plenum box of the grille (swirl or slot diffuser). Iris or control damper: in the connection of this grille only.')}</span>` : pt.kind === 'duct' ? `<span class="small muted">${__h('Node: register, iris, CAV or VAV controls a branch. Plenum dampers belong to the grilles.')}</span>` : ''}
     </div>`}`;
 }
@@ -1458,6 +1465,7 @@ function accountCard() {
         <label class="field" for="ac-np">${lbl(__('New password'))}<input id="ac-np" type="password" autocomplete="new-password" data-acct="np" value="${esc(A.np)}" placeholder="${esc(__('at least {n} characters, letters and digits', { n: PASS_MIN }))}"></label>
         <div class="row"><button class="btn sm" data-act="acctPass"${busy}>${__h('Change the password')}</button><span class="spacer"></span><button class="btn sm danger" data-act="acctOutAll"${busy}>${__h('Sign out on all devices')}</button></div>
         <span class="small muted">${__h('For a lost or stolen tablet or phone: every device has to sign in again (an open session ends within the hour).')}</span></details>
+      ${mfaHTML(A, busy)}
       ${msg}
       <div class="row"><button class="btn sm" data-act="acctRefresh"${busy}>${__h('Refresh')}</button><span class="spacer"></span><button class="btn sm ghost" data-act="acctOut"${busy}>${__h('Sign out')}</button></div>`;
   }
@@ -1470,6 +1478,22 @@ function accountCard() {
       <span class="small muted">${__h('The whole app follows the preview: buttons the role may not use are hidden, functions outside the plan are locked.')}</span>` : ''}
     <div class="tbl-wrap"><table class="tbl"><tbody>${rows}</tbody></table></div>
   </section>`;
+}
+/** 0.15.0: the second factor of the account (authenticator app): to sign reports at a distance with the account instead of a code */
+function mfaHTML(A, busy) {
+  const M = A.mfa || {}; const on = (M.list || []).find(f => f.status === 'verified');
+  return `<details class="stack-s" data-mfadet${M.open ? ' open' : ''}><summary class="small">${__h('Second factor (authenticator app)')}${M.list ? (on ? ' · ✓' : '') : ''}</summary>
+    <span class="small muted">${__h('With a code of an authenticator app (Google Authenticator, Microsoft Authenticator …) next to your password you can sign reports sent to your e-mail address with your account, without a code by e-mail or SMS.')}</span>
+    ${!M.list ? `<div class="row"><button class="btn sm" data-act="mfaLoad"${busy}>${__h('Show the state')}</button></div>`
+      : on ? `<span class="small">✓ ${__h('Switched on since {d}', { d: fmtDate(on.created_at) })}</span>
+        <div class="grid2"><label class="field" for="ac-mc">${lbl(__('Code from the app'))}<input id="ac-mc" class="mono" inputmode="numeric" autocomplete="one-time-code" maxlength="6" data-acct="mc" value=""></label></div>
+        <div class="row"><button class="btn sm danger" data-act="mfaOff"${busy}>${__h('Switch off (with a code)')}</button></div>`
+      : M.enroll ? `<span class="small">${__h('Scan the QR code with the authenticator app, or type the key; then enter the code the app shows.')}</span>
+        ${M.enroll.totp && M.enroll.totp.qr_code ? `<img alt="QR" src="${esc(M.enroll.totp.qr_code)}" style="width:180px;height:180px;background:#fff;border-radius:8px">` : ''}
+        <span class="small mono" style="word-break:break-all">${esc(M.enroll.totp ? M.enroll.totp.secret : '')}</span>
+        <div class="grid2"><label class="field" for="ac-mc">${lbl(__('Code from the app'))}<input id="ac-mc" class="mono" inputmode="numeric" autocomplete="one-time-code" maxlength="6" data-acct="mc" value=""></label></div>
+        <div class="row"><button class="btn sm primary" data-act="mfaConfirm"${busy}>${__h('Confirm')}</button><button class="btn sm ghost" data-act="mfaCancel"${busy}>${__h('Cancel')}</button></div>`
+      : `<div class="row"><button class="btn sm" data-act="mfaStart"${busy}>${__h('Switch on')}</button></div>`}</details>`;
 }
 /** one server action from the first screen or the account card: busy state, message, refresh of the whole app */
 async function acctRun(fn, okMsg) {
@@ -1510,7 +1534,7 @@ function dialogHTML(p, d) {
       ${unitClHTML(p, s)}
       ${fansCardHTML(p, s)}
       ${unitNpHTML(p, s)}
-      <details class="more"${ctlOn(s.ctl) ? ' open' : ''}><summary>${__h('Controller of the unit · control and communication')}</summary><div class="inner">${ctlHTML(p, { sys: s.id }, 'ctl', s.ctl, {})}</div></details>
+      <details class="more" data-k="uctl|${s.id}"${ctlOn(s.ctl) ? ' open' : ''}><summary>${__h('Controller of the unit · control and communication')}</summary><div class="inner">${ctlHTML(p, { sys: s.id }, 'ctl', s.ctl, {})}</div></details>
       <section class="card"><div class="hd"><h3>${__h('Note and photos')}</h3><span class="small muted">${__h('nameplate, controller display')}</span></div>
         ${inp({ sys: s.id, f: 'note' }, s.note, { label: __('Note'), nl: 'Opmerking', area: true })}
         ${photosHTML(p, 'sys:' + s.id)}</section>
@@ -1552,6 +1576,7 @@ function dialogHTML(p, d) {
     return sheetFrame(__('Settings'), `
       ${accountCard()}
       ${typeof supportCard === 'function' ? supportCard() : ''}
+      ${typeof btCard === 'function' ? btCard() : ''}
       <section class="card"><h3>${__h('On this device')}</h3><p class="small muted" style="margin:0" data-devmem>${__h('Checking the memory…')}</p></section>
       <section class="card"><h3>${__h('Company in the reports')}</h3><p class="small muted" style="margin:0">${__h('Header, cover and footer of PDF and Excel. Used for new projects.')}</p>
         ${styleBlockHTML()}
@@ -1755,7 +1780,8 @@ function closeSheetNow() {
     const pt = p.points.find(x => x.id === S.ed.id);
     if (pt && !pt.code && !isNum(pt.designQ) && !readings(pt, 'eerste').length && !readings(pt, 'controle').length && !pt.room) { p.points = p.points.filter(x => x !== pt); touch(p); }
   }
-  S.ed = null; S.dlg = null; S.confirm = null; render();
+  const id = S.ed && S.ed.id; S.ed = null; S.dlg = null; S.confirm = null;
+  if (typeof keepPlace === 'function' && S.view === 'project') keepPlace(id, render); else render(); // 0.13.1: no jump to the top
 }
 function closeSheet() { if (STANDALONE && history.state && history.state.inregelaar) history.back(); else closeSheetNow(); }
 function pushNav() { if (STANDALONE) try { history.pushState({ inregelaar: Date.now() }, ''); } catch (e) { } }
@@ -1810,6 +1836,12 @@ async function exportReport(p, act, t) {
   await Folders.ready(p.id); // write access while the tap is fresh
   try {
     const pv = scopeView(p, repScope(p)); // the part chosen in the «Report» step
+    // 0.15.3: signed at a distance — the PDF is the signed version of the server (the signatures in their place + the signatures page)
+    if (act === 'pdf' && repScope(p) === 'all' && typeof SignCloud !== 'undefined' && SignCloud.serverPdfOk(p)) {
+      try { const d = await SignCloud.signedPdf(p); const ok = await offerFile(reportBase(pv) + `_v${d.n}_ondertekend.pdf`, d.blob, p); if (ok) { p.report.generatedAt = Date.now(); touch(p); }
+        if (t) { t.disabled = false; t.innerHTML = old; } return; }
+      catch (e) { console.warn('signed version', e); toast(__('The signed version could not be downloaded: the report is made on the device')); }
+    }
     const blob = act === 'xlsx' ? await buildXlsx(pv) : await buildPdf(pv);
     const ok = await offerFile(reportBase(pv) + (act === 'xlsx' ? '.xlsx' : '.pdf'), blob, p);
     if (ok) { p.report.generatedAt = Date.now(); touch(p); }
@@ -1827,6 +1859,8 @@ document.addEventListener('click', async (e) => {
     if (act === 'bulkCreate' && p && S.dlg && p.points.length + bulkCodes(S.dlg.v).length > DEMO_LIMITS.points) { Access.demoRoom('point', { points: { length: DEMO_LIMITS.points } }); return; }
   }
   if (typeof supAction === 'function' && supAction(act, t)) return; // 0.12.0: help and support, announcements
+  if (typeof signAction === 'function' && signAction(act, t)) return; // 0.14.0: signers
+  if (typeof btAction === 'function' && btAction(act, t)) return; // 0.12.3: Bluetooth instruments
   switch (act) {
     case 'viewPhoto': S.pv = { owner: t.dataset.owner, id: t.dataset.id }; S.confirm = null; pushNav(); renderViewer(); break;
     case 'closeViewer': if (STANDALONE && history.state && history.state.inregelaar) history.back(); else { S.pv = null; S.confirm = null; renderViewer(); refreshOwner(); } break;
@@ -1923,6 +1957,13 @@ document.addEventListener('click', async (e) => {
       }, __('New password saved: you are signed in')); break; }
     case 'acctPass': { const A = acctSync(); if (!passOK(A.np)) { A.err = cloudMsg({ code: 'weak_password' }); acctPaint(); break; }
       acctRun(async () => { await Auth.setPassword(A.np); A.np = ''; }, __('Password changed')); break; }
+    case 'mfaLoad': { const A = acctState(); A.mfa = Object.assign(A.mfa || {}, { open: true }); acctRun(async () => { A.mfa.list = await Auth.factors(); }); break; }
+    case 'mfaStart': { const A = acctState(); A.mfa = Object.assign(A.mfa || {}, { open: true }); acctRun(async () => { A.mfa.enroll = await Auth.mfaEnroll(); }); break; }
+    case 'mfaCancel': { const A = acctState(); if (A.mfa) A.mfa.enroll = null; acctPaint(); break; }
+    case 'mfaConfirm': { const A = acctSync(); const M = A.mfa || {}; if (!M.enroll) break;
+      acctRun(async () => { await Auth.mfaVerify(M.enroll.id, A.mc); A.mc = ''; M.enroll = null; M.list = await Auth.factors(); }, __('Second factor switched on')); break; }
+    case 'mfaOff': { const A = acctSync(); const M = A.mfa || {}; const on = (M.list || []).find(f => f.status === 'verified'); if (!on) break;
+      acctRun(async () => { await Auth.mfaRemove(on.id, A.mc); A.mc = ''; M.list = await Auth.factors(); }, __('Second factor switched off')); break; }
     case 'acctOut': acctRun(() => Cloud.signOut(), __('Signed out')); break;
     case 'acctOutAll': acctRun(() => Cloud.signOut(true), __('Signed out on all devices')); break;
     case 'demoOut': demoOut(t.dataset.v); break;
@@ -2013,6 +2054,7 @@ document.addEventListener('click', async (e) => {
       Store.projects = Store.spaces[lsKey(LS_KEY)] || Store.projects;
       toast(r.added ? __('{n} projects put back', { n: r.added }) : __('All projects of this copy are already here')); render(); renderSheet(); break; }
     case 'closeSheet': closeSheet(); break;
+    case 'rowPin': if (typeof KEEP !== 'undefined') KEEP.go(); break; // 0.13.1: back to the worked row
     case 'setKind': case 'setDir': case 'setShape': {
       const pt = p.points.find(x => x.id === S.ed.id); const v = t.dataset.v;
       if (act === 'setKind') { pt.kind = v; if (v === 'device') { if (!DEVICE_ONLY.includes(pt.reg.type)) pt.reg.type = 'brand'; pt.fd = Object.assign(FD0(), pt.fd || {}); } else if (DEVICE_ONLY.includes(pt.reg.type)) pt.reg.type = 'none'; if (v === 'duct' && pt.reg.type === 'plenum') pt.reg.type = 'regelklep'; if (v === 'duct' && !['pitot', 'traverse', 'readout', 'anemo'].includes(pt.method)) pt.method = 'pitot'; if (v === 'terminal' && (pt.method === 'pitot' || pt.method === 'traverse')) pt.method = 'hood'; }
@@ -2117,6 +2159,7 @@ document.addEventListener('change', onField);
 function onField(e) {
   const el = e.target;
   { const perm = Access.fieldPerm(el); if (perm && !Access.can(perm)) { if (e.type === 'change') toast(Access.why(perm)); return; } }
+  if (el.dataset.sgf !== undefined) { if (typeof signField === 'function') signField(el, e); return; } // 0.14.0: signers
   if (el.id === 'importFile' && e.type === 'change') return importFile(el);
   if (el.dataset.batch !== undefined) { if (e.type !== 'change') return; const fl = el.files ? [...el.files] : []; el.value = ''; if (fl.length) BATCH.open(fl, el.dataset.batch); return; }
   if (el.dataset.aidocrole !== undefined) { const it = S.dlg && S.dlg.type === 'aidocs' && S.dlg.docs[Number(el.dataset.aidocrole)]; if (it) it.role = el.value; return; }

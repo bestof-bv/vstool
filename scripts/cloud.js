@@ -14,17 +14,27 @@ const FullApp = {
   setWant(on) { try { if (on) localStorage.setItem(this.WANT, '1'); else localStorage.removeItem(this.WANT); } catch (e) { } },
   info() { try { return JSON.parse(localStorage.getItem(this.LS) || 'null'); } catch (e) { return null; } },
   /** download the files of the full version into the cache; returns the version */
-  async install() {
+  async install(prog = () => { }) {
     if (!('caches' in window) || !navigator.serviceWorker) throw new CloudError('no_cache');
+    prog(2, __('Connecting to the server…'));
     const j = await Auth.call('/functions/v1/app-bundle', { body: { channel: Beta.channel() } });
     if (!j || !j.version || !Array.isArray(j.files) || !j.files.length) throw new CloudError('no_bundle');
     const c = await caches.open(this.CACHE); const base = new URL('full/' + j.version + '/', location.href).href;
+    const N = j.files.length; let done = 0;
+    // 0.15.2: progress per file and, when the server tells the size, within the file (5 % … 95 %)
+    const at = (part) => prog(Math.min(95, Math.round(5 + 90 * (done + part) / N)), __('Downloading the full version {v}… ({i} of {n} files)', { v: j.version, i: Math.min(N, done + 1), n: N }));
     for (const f of j.files) {
       if (!/^[A-Za-z0-9_./-]+$/.test(f.path) || f.path.includes('..')) throw new CloudError('bad_bundle');
-      const r = await fetch(f.url, { cache: 'no-store' }); if (!r.ok) throw new CloudError('download');
+      at(0); const r = await fetch(f.url, { cache: 'no-store' }); if (!r.ok) throw new CloudError('download');
       const type = /\.css$/.test(f.path) ? 'text/css' : /\.woff$/.test(f.path) ? 'font/woff' : 'text/javascript';
-      await c.put(base + f.path, new Response(await r.blob(), { headers: { 'content-type': type + (type.startsWith('text') ? '; charset=utf-8' : '') } }));
+      let blob; const len = +(r.headers.get('content-length') || 0);
+      if (len > 0 && r.body && r.body.getReader) { const rd = r.body.getReader(); const parts = []; let got = 0;
+        for (;;) { const { done: end, value } = await rd.read(); if (end) break; parts.push(value); got += value.length; at(Math.min(1, got / len)); }
+        blob = new Blob(parts); } else blob = await r.blob();
+      await c.put(base + f.path, new Response(blob, { headers: { 'content-type': type + (type.startsWith('text') ? '; charset=utf-8' : '') } }));
+      done++; at(0);
     }
+    prog(97, __('Starting the full version…'));
     for (const k of await c.keys()) if (!k.url.startsWith(base)) await c.delete(k);
     localStorage.setItem(this.LS, JSON.stringify({ version: j.version, files: j.files.map(f => f.path), at: Date.now() }));
     await Promise.race([navigator.serviceWorker.ready, new Promise(r => setTimeout(r, 5000))]); this.setWant(false);
@@ -34,8 +44,9 @@ const FullApp = {
   /** demo site, signed in: load the full version and restart into it */
   async go() {
     if (this.busy) return; this.busy = true;
-    try { toast(__('Loading the full version…')); await this.install(); location.reload(); }
-    catch (e) { this.busy = false; toast(e.code === 'no_plan' || e.status === 403 ? __('This account has no valid plan for the full version') : __('The full version could not be loaded: {e}', { e: e.code || e.message })); }
+    const ov = loadOverlay(__('Loading the full version'));
+    try { await this.install((pct, msg) => ov.set(pct, msg)); ov.set(100, __('Starting the full version…')); location.reload(); }
+    catch (e) { this.busy = false; ov.close(); toast(e.code === 'no_plan' || e.status === 403 ? __('This account has no valid plan for the full version') : __('The full version could not be loaded: {e}', { e: e.code || e.message })); }
   },
   /** running the full version: a newer one on the server, or the plan ended → update or back to the demo */
   async check() {
@@ -44,6 +55,15 @@ const FullApp = {
     catch (e) { if (e.status === 403) { await this.clear(); location.reload(); } }
   },
 };
+/** 0.15.2: a blocking window with a progress bar (loading the full version after sign-in); built outside render() so a repaint
+ *  of the app does not remove it */
+function loadOverlay(title) {
+  const d = document.createElement('div'); d.className = 'load-ov'; d.setAttribute('role', 'alertdialog'); d.setAttribute('aria-live', 'polite');
+  d.innerHTML = `<div class="load-box"><b>${esc(title)}</b><div class="load-bar"><i style="width:0%"></i></div><div class="load-row"><span class="small muted" data-m>${esc(__('Connecting to the server…'))}</span><span class="load-pct" data-p>0 %</span></div><span class="small muted">${esc(__('One moment: this happens once per version. Keep this page open.'))}</span></div>`;
+  document.body.appendChild(d);
+  return { set(p, m) { d.querySelector('i').style.width = p + '%'; d.querySelector('[data-p]').textContent = p + ' %'; if (m) d.querySelector('[data-m]').textContent = m; },
+    close() { d.remove(); } };
+}
 const cloudUrl = () => String(Settings.v.cloudUrl || CLOUD.url).replace(/\/+$/, '');
 /** the preview in the chat may not call other sites: sign-in works in the app (APK) and the PWA */
 const cloudOn = () => STANDALONE || !!Settings.v.cloudUrl;
@@ -136,6 +156,20 @@ const Auth = {
     this.save(this.sessionFrom(j)); return { weak: !!(j && j.weak_password) };
   },
   async recover(email) { await this.call('/auth/v1/recover', { body: await Captcha.wrap({ email }), auth: false }); },
+  /* 0.15.0: second factor (TOTP, Supabase Auth MFA) — needed to sign a report at a distance with the account (level 1) */
+  async factors() { const u = await this.call('/auth/v1/user', { method: 'GET' }); return (u && u.factors || []).filter(f => f.factor_type === 'totp'); },
+  /** a new key for the authenticator app; unfinished earlier attempts are removed first */
+  async mfaEnroll() {
+    for (const f of await this.factors()) if (f.status !== 'verified') { try { await this.call('/auth/v1/factors/' + f.id, { method: 'DELETE' }); } catch (e) { } }
+    return this.call('/auth/v1/factors', { body: { factor_type: 'totp', issuer: 'Ventilation Setup Tool', friendly_name: 'App ' + new Date().toISOString().replace(/[:.]/g, '-') } });
+  },
+  /** a code of the authenticator app: the session becomes aal2 */
+  async mfaVerify(id, code) {
+    const c = await this.call(`/auth/v1/factors/${id}/challenge`, { body: {} });
+    const j = await this.call(`/auth/v1/factors/${id}/verify`, { body: { challenge_id: c.id, code: String(code || '').replace(/\D/g, '') } });
+    if (j && j.access_token) this.save(this.sessionFrom(Object.assign({ user: this.t && this.t.user ? { id: this.t.user.id, email: this.t.user.email, user_metadata: { name: this.t.user.name } } : {} }, j)));
+  },
+  async mfaRemove(id, code) { await this.mfaVerify(id, code); await this.call('/auth/v1/factors/' + id, { method: 'DELETE' }); },
   async setPassword(password) { await this.call('/auth/v1/user', { method: 'PUT', body: { password } }); },
   /** all = on every device (every refresh token of the account ends; an open session elsewhere ends within the hour) */
   async signOut(all) {
