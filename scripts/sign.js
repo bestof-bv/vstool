@@ -42,12 +42,25 @@ const signDone = (s) => !!s.sig;
 const signLocked = (s) => !!(s.sig && s.req && s.req.status === 'signed');
 /** 0.15.0: a light fingerprint of the report content, without the signatures (to see that the report changed after it was frozen) */
 function signCk(p) {
-  const skip = new Set(['signers', 'signFinal', 'signRound', 'signature', 'signName', 'generatedAt', 'cloud', 'updatedAt', 'pkg']);
+  const skip = new Set(['signers', 'signFinal', 'signRound', 'signature', 'signName', 'generatedAt', 'cloud', 'updatedAt', 'pkg', 'rev', 'revAuto']);
   let h = 5381; const js = JSON.stringify(p, (k, v) => skip.has(k) ? undefined : typeof v === 'string' && v.length > 600 ? v.length + ':' + v.slice(0, 40) + v.slice(-40) : v) || '';
   for (let i = 0; i < js.length; i++) h = ((h << 5) + h + js.charCodeAt(i)) | 0;
   return (h >>> 0).toString(36) + js.length.toString(36);
 }
 const signCkMemo = { at: '', id: '', v: '' };
+/** 0.15.4: the next report version: 3 → 4, A → B, 1.2 → 1.3; empty (= the first version) → 2 */
+function revNext(v) { v = String(v || '').trim(); if (!v) return '2'; const m = /^(.*?)(\d+)$/.exec(v); if (m) return m[1] + (+m[2] + 1);
+  if (/^[A-Ya-y]$/.test(v)) return String.fromCharCode(v.charCodeAt(0) + 1); return v + '.1'; }
+/** 0.15.4: «Versie rapport» goes up by itself at the first change of the report after a signature. Every new signature (here, by link,
+ *  or cleared for a new version) takes the report as it is then as the base; true when the version was raised */
+function revCheck(p) {
+  if (!p || !p.report || !p.info) return false;
+  const sig = signers(p).filter(s => s.sig).map(s => s.id + '@' + (s.at || '')).join('|');
+  const R = p.report.revAuto || (p.report.revAuto = {}); const ck = signCk(p);
+  if (sig !== (R.sig || '')) { Object.assign(R, { sig, base: ck, bumped: false }); return false; }
+  if (!sig || R.bumped || R.base === ck) return false;
+  R.from = p.info.rev || ''; p.info.rev = revNext(p.info.rev); R.bumped = true; R.at = new Date().toISOString(); return true;
+}
 const signCkOf = (p) => { if (signCkMemo.id !== p.id || signCkMemo.at !== (p.updatedAt || '')) Object.assign(signCkMemo, { id: p.id, at: p.updatedAt || '', v: signCk(p) }); return signCkMemo.v; };
 /** the steps of a request with their times: sent → opened → code → signed (or declined) */
 function signSteps(s) {

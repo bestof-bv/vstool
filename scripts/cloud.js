@@ -248,8 +248,8 @@ const Cloud = {
   /** after sign-in and at start: organisations, invitations for me, session of the chosen organisation */
   async refresh() {
     if (!Auth.user()) { this.orgs = []; this.invites = []; this.members = []; this.sent = []; Access.clear(); if (typeof Support !== 'undefined') Support.refresh(); return; }
-    const [orgs, inv] = await Promise.all([Auth.rpc('my_orgs'), Auth.rpc('my_invites'), Beta.refresh()]);
-    this.orgs = orgs || []; this.invites = inv || []; this.loaded = true;
+    const [orgs, inv, ph] = await Promise.all([Auth.rpc('my_orgs'), Auth.rpc('my_invites'), Auth.rpc('my_phone').catch(() => null), Beta.refresh()]);
+    this.orgs = orgs || []; this.invites = inv || []; this.phone = ph; this.loaded = true;
     const o = this.orgs.find(x => x.id === Settings.v.orgId) || this.orgs[0];
     if (!o) { this.members = []; this.sent = []; Access.clear(); loginFill({ status: 'cloud', user: Auth.user(), org: null }); return; }
     if (Settings.v.orgId !== o.id) { Settings.v.orgId = o.id; Settings.save(); }
@@ -268,6 +268,9 @@ const Cloud = {
     if (typeof Support !== 'undefined') { try { await Support.refresh(); } catch (e) { console.warn(e); } }
   },
   orgId() { const s = Access.s; return s && s.status === 'cloud' && s.org ? s.org.id : null; },
+  /** 0.15.5: a mobile number confirmed by SMS before a new organisation (and its trial) */
+  async phoneSend(phone) { return Auth.call('/functions/v1/phone', { body: { action: 'send', phone, lang: (typeof Settings !== 'undefined' && Settings.v.lang) || 'nl' } }); },
+  async phoneVerify(code) { const j = await Auth.call('/functions/v1/phone', { body: { action: 'verify', code } }); this.phone = Object.assign({}, this.phone || {}, { phone: j.phone, verified_at: new Date().toISOString() }); return j; },
   async createOrg(name) { const id = await Auth.rpc('create_org', { org_name: name }); Settings.v.orgId = id; Settings.save(); await this.refresh(); },
   async pick(id) { Settings.v.orgId = id; Settings.save(); await this.refresh(); },
   /** the invitation code comes from the administrator (WhatsApp, mail, by hand); a wrong code counts, after 5 the invitation closes */
@@ -337,6 +340,16 @@ function cloudMsg(e) {
     invite_invalid: __('The invitation is not valid any more'),
     invite_other_email: __('This invitation is for another e-mail address'),
     org_name_missing: __('Enter the name of the organisation'),
+    // 0.15.5: the mobile number at registration
+    phone_required: __('First confirm your mobile number with the code by SMS'),
+    phone: __('The mobile number is not valid (for example 0470 12 34 56 or +32 470 12 34 56).'),
+    wait: __('Wait a moment before asking for a new code'),
+    too_many: __('Too many codes or tries today: try again tomorrow'),
+    busy: __('No SMS can be sent right now: try again later'),
+    code: __('The code is not correct'),
+    code_expired: __('The code has expired: ask for a new one'),
+    sms: __('The SMS could not be sent: check the number and try again'),
+    sms_not_configured: __('Codes by SMS are not switched on on the server yet'),
     not_signed_in: __('Sign in first'),
     PGRST202: __('The server is not set up yet: run the SQL file in Supabase (SQL Editor)'),
     '42P01': __('The server is not set up yet: run the SQL file in Supabase (SQL Editor)'),

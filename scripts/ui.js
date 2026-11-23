@@ -27,7 +27,12 @@ const Theme = {
 Theme.apply();
 let S = { view: 'home', pid: null, step: 0, f: { sys: 'all', dir: 'all', todo: false }, ed: null, dlg: null, confirm: null, adj: {}, fan: {}, list: [], scrollTop: 0, pv: null };
 const cur = () => (S.pid ? Store.projects[S.pid] : null);
-function touch(p) { Store.touch(p); }
+function touch(p) {
+  Store.touch(p);
+  // 0.15.4: the report version follows a change after signing (checked once the typing stops)
+  clearTimeout(touch._rev); touch._rev = setTimeout(() => { try { if (typeof revCheck === 'function' && revCheck(p)) { Store.touch(p);
+    toast(__('Report version {v}: the report changed after it was signed', { v: p.info.rev })); if (typeof renderKeepAll === 'function') renderKeepAll(); } } catch (e) { console.warn('rev', e); } }, 1500);
+}
 
 /** label with an optional hint: the term as it appears in the report (when the report language differs from the interface) */
 /** report term shown next to an interface label (Settings → hints), '' when not needed */
@@ -1369,8 +1374,22 @@ function orgStepHTML(A) {
   const inv = invitesHTML(A);
   return `${inv ? `<div class="stack-s"><span class="label">${__h('Invitations for you')}</span>${inv}<span class="small muted">${__h('The administrator gives you the invitation code (for example by WhatsApp or mail).')}</span></div>` : ''}
     <div class="stack-s"><span class="label">${__h('New organisation')}</span><span class="small muted">${__h('You become its owner, with a free trial of 14 days for 3 users.')}</span>
+      ${phoneStepHTML(A)}
       <label class="field" for="ac-orgname">${lbl(__('Name of the firm'))}<input id="ac-orgname" type="text" enterkeyhint="go" data-acct="org" value="${esc(A.org)}" placeholder="Firma nv"></label>
       <div class="row"><button class="btn${inv ? '' : ' primary'}" data-act="orgCreate" data-go${busy}>${__h('Create the organisation')}</button></div></div>`;
+}
+/** 0.15.5: confirm the mobile number by SMS before the first organisation (one free trial per number) */
+function phoneStepHTML(A) {
+  const P = Cloud.phone; if (!P) return '';
+  const busy = A.busy ? ' disabled' : '';
+  if (P.phone) return `<span class="small">✓ ${__h('Mobile number confirmed: {p}', { p: P.phone })}</span>`;
+  if (!P.required) return '';
+  return `<div class="stack-s ph-step"><span class="small">${__h('First confirm your mobile number: you get a code by SMS. One free trial per number.')}</span>
+    <div class="grid2"><label class="field" for="ac-phone">${lbl(__('Mobile number'), 'Gsm')}<input id="ac-phone" type="tel" inputmode="tel" autocomplete="tel" data-acct="phone" value="${esc(A.phone || '')}" placeholder="0470 12 34 56"></label>
+      ${A.phSent ? `<label class="field" for="ac-phcode">${lbl(__('Code from the SMS'))}<input id="ac-phcode" class="mono" inputmode="numeric" autocomplete="one-time-code" maxlength="6" data-acct="phcode" value="${esc(A.phcode || '')}"></label>` : ''}</div>
+    ${A.phSent ? `<span class="small muted">${__h('Code sent to {p}. It is valid for 10 minutes.', { p: A.phSent })}</span>` : ''}
+    <div class="row">${A.phSent ? `<button class="btn sm primary" data-act="phVerify"${busy}>${__h('Confirm')}</button><button class="btn sm ghost" data-act="phSend"${busy}>${__h('New code')}</button>`
+      : `<button class="btn sm primary" data-act="phSend"${busy}>${__h('Send the code')}</button>`}</div></div>`;
 }
 /* ---------- first screen: sign in or create an account (to get to know the app: demo / demo) ---------- */
 const gateOn = () => !Demo.on() && !(Auth.user() && Access.s && Access.s.status === 'cloud');
@@ -1969,6 +1988,9 @@ document.addEventListener('click', async (e) => {
     case 'demoOut': demoOut(t.dataset.v); break;
     case 'fullSignIn': FullApp.setWant(true); demoOut('signin'); break; // demo site: the account screen; after sign-in the full version loads
     case 'acctRefresh': acctRun(() => Cloud.refresh(), __('Updated')); break;
+    case 'phSend': { const A = acctSync(); if (!String(A.phone || '').trim()) { A.err = __('Enter your mobile number'); acctPaint(); break; }
+      acctRun(async () => { const j = await Cloud.phoneSend(A.phone); A.phSent = j.phone; A.phcode = ''; }); break; }
+    case 'phVerify': { const A = acctSync(); acctRun(async () => { await Cloud.phoneVerify(A.phcode); A.phSent = ''; A.phcode = ''; }, __('Mobile number confirmed')); break; }
     case 'orgCreate': { const A = acctSync(); if (!String(A.org || '').trim()) { A.err = __('Enter the name of the organisation'); acctPaint(); break; } acctRun(() => Cloud.createOrg(A.org), __('Organisation created: you are the owner')); break; }
     case 'invAccept': { const A = acctSync(); const id = t.dataset.v; const c = String((A.codes || {})[id] || '').trim();
       if (!c) { A.err = cloudMsg({ code: 'invite_code_missing' }); acctPaint(); break; }
